@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: opencode-evolved
+    runtime: docker
+    repo: https://github.com/daveymena/open2
+    branch: main
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: OPENCODE_WORKSPACE
+        value: /workspace
+      - key: FREEMODEL_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: PUTER_AUTH_TOKEN
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENCODE_SERVER_PASSWORD
+        sync: false

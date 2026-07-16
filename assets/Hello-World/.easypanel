@@ -1,0 +1,20 @@
+{
+  "name": "OpenCode Evolved",
+  "type": "app",
+  "build": {
+    "dockerfile": "./Dockerfile"
+  },
+  "deploy": {
+    "port": 3000,
+    "healthcheck": {
+      "path": "/__health",
+      "interval": 30,
+      "timeout": 10,
+      "retries": 3
+    },
+    "resources": {
+      "memory": "2Gi",
+      "cpu": "2"
+    }
+  }
+}

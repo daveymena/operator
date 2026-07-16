@@ -1,0 +1,130 @@
+# ============================================================
+# OpenCode Evolved — Configuración para EasyPanel
+# ============================================================
+# Instrucciones:
+#   1. Sube este repo a GitHub
+#   2. En EasyPanel: New Project → Add Service → App
+#   3. Source: GitHub → selecciona tu repo
+#   4. EasyPanel detecta el Dockerfile automáticamente
+#   5. Configura las variables de entorno abajo
+#   6. Crea un dominio (Domain) apuntando al puerto 3000
+# ============================================================
+
+services:
+  opencode:
+    type: app
+    build:
+      type: dockerfile
+      file: Dockerfile
+    domains:
+      - host: "opencode.$(PRIMARY_DOMAIN)"
+        port: 3000
+        https: true
+    ports:
+      - published: 3000
+        target: 3000
+        protocol: tcp
+    env:
+      # ── Servidor ──────────────────────────────────────────
+      PORT: "3000"
+      OPENCODE_WORKSPACE: /workspace
+      TZ: "America/Bogota"
+      DISPLAY: ":99"
+      OPERATOR_PORT: "3002"
+      API_SERVER_PORT: "3002"
+
+      # ── Seguridad (opcional pero recomendado) ─────────────
+      OPENCODE_SERVER_PASSWORD: "6715320Dvd."
+
+      # ── FreeModel (GPT-4o GRATIS — prioridad #1 para visión) ──
+      FREEMODEL_API_KEY: "fe_oa_db8434da9d092b657e26dba8e2cdbf5cc460848f7e3b490c"
+      FREEMODEL_BASE_URL: "https://api.freemodel.dev/v1"
+      FREEMODEL_MODEL: "gpt-4o"
+
+      # ── OpenAI ───────────────────────────────────────────
+      OPENAI_API_KEY: "sk-YWevx8mah8rJrsUHuGydWhSYL3tYEyohCYOReAafifhj2m6Kb0La07ywx9Kpbbl7"
+
+      # ── Anthropic Claude ─────────────────────────────────
+      # Obtener en: https://console.anthropic.com
+      ANTHROPIC_API_KEY: ""
+
+      # ── Google Gemini ─────────────────────────────────────
+      # Obtener en: https://aistudio.google.com/app/apikey
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+
+      # ── GRATUITOS (solo registro) ─────────────────────────
+      # Groq → https://console.groq.com/keys (Llama, Mixtral)
+      GROQ_API_KEY: ""
+      # OpenRouter → https://openrouter.ai/keys (60+ modelos)
+      OPENROUTER_API_KEY: ""
+      # Cerebras → https://cloud.cerebras.ai (ultrarrápido)
+      CEREBRAS_API_KEY: ""
+      # Together AI → https://api.together.xyz
+      TOGETHER_AI_API_KEY: ""
+
+      # ── Otros ────────────────────────────────────────────
+      MISTRAL_API_KEY: ""
+      XAI_API_KEY: ""
+
+      # ── Puter.js (texto gratis sin API key) ──────────────
+      PUTER_AUTH_TOKEN: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0IjoiZ3VpIiwidiI6IjAuMC4wIiwidSI6ImRDdjMrQURQU1BldFk0Z09JLyt3Umc9PSIsInV1Ijoic0VDNE5SZi9Ra3FBYWlIZ1FsTWNWZz09IiwiaWF0IjoxNzc4ODYyMDk2fQ.OA-DQOWYxuE0tSxhR4Egl2x50KSgYyPeu-HjT-JqSrs"
+
+      # ── GitHub Token (para push/pull desde el agente) ────
+      GITHUB_TOKEN: "TU_GITHUB_TOKEN_AQUI"
+      GITHUB_PERSONAL_ACCESS_TOKEN: ""
+
+      # ── Base de datos Easypanel PostgreSQL ───────────────
+      EASYPANEL_DATABASE_URL: "postgres://PostgreSQL:6715320D@tecnoia_tecnologi:5432/tecno?sslmode=disable"
+      DB_HOST: "tecnoia_tecnologi"
+      DB_PORT: "5432"
+      DB_USER: "PostgreSQL"
+      DB_PASSWORD: "6715320D"
+      DB_NAME: "tecno"
+
+      # ── Telegram Bot (opcional) ───────────────────────────
+      TELEGRAM_BOT_TOKEN: ""
+
+      # ── Ollama (modelos locales, si lo tienes instalado) ──
+      OLLAMA_HOST: ""
+
+    mounts:
+      - type: volume
+        name: opencode-workspace
+        mountPath: /workspace
+      - type: volume
+        name: opencode-data
+        mountPath: /root/.local/share/opencode
+      - type: volume
+        name: opencode-config
+        mountPath: /root/.config/opencode
+      - type: volume
+        name: mimo-config
+        mountPath: /root/.config/mimo
+
+    resources:
+      memoryLimit: 2048
+      cpuLimit: 2
+
+  # ── PostgreSQL (opcional si usas el de Easypanel) ──────────
+  # Descomenta si quieres una BD propia en el mismo stack
+  # postgres:
+  #   type: postgres
+  #   image: postgres:16
+  #   env:
+  #     POSTGRES_DB: opencode
+  #     POSTGRES_USER: opencode
+  #     POSTGRES_PASSWORD: "TU_PASSWORD_AQUI"
+  #   mounts:
+  #     - type: volume
+  #       name: postgres-data
+  #       mountPath: /var/lib/postgresql/data
+
+  # ── Ollama (modelos 100% locales y gratuitos) ──────────────
+  # Descomenta para usar Llama, Mistral, etc. localmente
+  # ollama:
+  #   type: app
+  #   image: ollama/ollama:latest
+  #   mounts:
+  #     - type: volume
+  #       name: ollama-models
+  #       mountPath: /root/.ollama

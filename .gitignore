@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.local
+config/.env
+operator/memory/
+operator/knowledge/
+operator/screenshots/
+*.log
+logs/
+.DS_Store
+Thumbs.db
+desktop.ini

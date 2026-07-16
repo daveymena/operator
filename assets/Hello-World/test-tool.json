@@ -1,0 +1,1 @@
+{"model":"freemodel/gpt-5.4-mini","messages":[{"role":"user","content":"Lista los archivos del directorio actual usando el filesystem. Ejecuta el comando ls."}],"tools":[]}

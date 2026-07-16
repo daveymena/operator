@@ -1,0 +1,8 @@
+fix: Remover build de frontend que causaba error en EasyPanel
+
+- Quitar npm run build de artifacts/opencode-ui en Dockerfile
+- OpenCode usa interfaz nativa, no requiere build de React
+- El proxy solo sirve archivos estáticos desde /public
+- Resuelve error: "Rollup failed to resolve import @tanstack/react-query"
+
+Esto permite que el contenedor se construya exitosamente en EasyPanel.

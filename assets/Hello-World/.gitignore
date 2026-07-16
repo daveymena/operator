@@ -1,0 +1,41 @@
+# Dependencias
+node_modules/
+**/node_modules/
+artifacts/**/node_modules/
+
+# Cache local de pnpm y otros gestores
+.local/
+
+# Binarios grandes (se descargan en el build de Docker)
+bin/opencode
+bin/opencode-*
+
+# Archivos nativos compilados
+*.node
+
+# Sesiones de Chrome y memoria del web-operator
+.chrome-session/
+web-operator/.chrome-session/
+web-operator/.site-memory/
+web-operator/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Variables de entorno REALES (nunca subir)
+.env
+# NOTA: .env.example SÍ se sube (es la plantilla, sin valores reales)
+
+# Archivos de npm instalados por error en la raíz
+=*
+
+# Archivos de autenticación locales
+wsl-auth.json
+fix-github-auth.js
+
+# Dist del frontend (se compila en Docker)
+artifacts/opencode-ui/dist/
+
+# Git interno
+.git/config

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "evolved": {
+      "command": "node",
+      "args": ["bin/mcp-evolved-win.mjs"],
+      "env": {
+        "OPERATOR_PORT": "3001"
+      }
+    }
+  }
+}

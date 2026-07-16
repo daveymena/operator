@@ -1,0 +1,57 @@
+modules = ["nodejs-24"]
+
+[[artifacts]]
+id = "artifacts/api-server"
+
+[[artifacts]]
+id = "artifacts/mockup-sandbox"
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "https://rzkmwvvezpijejiasowe.supabase.co"
+SUPABASE_DATABASE_URL = "postgresql://postgres:OpenCode_Evo_2026!@db.rzkmwvvezpijejiasowe.supabase.co:5432/postgres"
+SUPABASE_SERVICE_ROLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdWJhc2UiLCJyZWYiOiJyemttd3Z2ZXpwaWplamlhc293ZSIsInJvbGUiOiJzZXJ2aWNlX3JvbGUiLCJpYXQiOjE3NDI1ODMxMTIsImV4cCI6MjA1ODE1OTExMn0.S_i_l0v1eGsYcTVMfUqMA_YquSsw5F"
+PORT = "21293"
+OPENCODE_PORT = "21294"
+OPERATOR_PORT = "3001"
+NODE_ENV = "production"
+TZ = "America/Bogota"
+DISPLAY = ":99"
+DB_HOST = "tecnoia_tecnologi"
+DB_PORT = "5432"
+DB_USER = "PostgreSQL"
+DB_NAME = "tecno"
+FREEMODEL_BASE_URL = "https://api.freemodel.dev/v1"
+FREEMODEL_MODEL = "gpt-4o"
+GITHUB_COPILOT_ENABLED = "false"
+COPILOT_MODEL = "gpt-4o"
+OPENCODE_WORKSPACE = "/app"
+OPENAI_API_KEY = "sk-YWevx8mah8rJrsUHuGydWhSYL3tYEyohCYOReAafifhj2m6Kb0La07ywx9Kpbbl7"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+FREEMODEL_API_KEY = "fe_oa_db8434da9d092b657e26dba8e2cdbf5cc460848f7e3b490c"
+PUTER_AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0IjoiZ3VpIiwidiI6IjAuMC4wIiwidSI6ImRDdjMrQURQU1BldFk0Z09JLyt3Umc9PSIsInV1Ijoic0VDNE5SZi9Ra3FBYWlIZ1FsTWNWZz09IiwiaWF0IjoxNzc4ODYyMDk2fQ.OA-DQOWYxuE0tSxhR4Egl2x50KSgYyPeu-HjT-JqSrs"
+GITHUB_TOKEN = ""
+DB_PASSWORD = "6715320D"
+EASYPANEL_DATABASE_URL = "postgres://PostgreSQL:6715320D@tecnoia_tecnologi:5432/tecno?sslmode=disable"
+OPENCODE_SERVER_PASSWORD = "6715320Dvd."
+OPENCODE_USERNAME = "opencode"

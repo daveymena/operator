@@ -1,0 +1,121 @@
+version: "3.9"
+
+# ============================================================
+# OpenCode Evolved — Docker Compose
+# Uso local:   docker compose up -d
+# Uso Windows: docker compose --env-file .env up -d
+# ============================================================
+# Crea un archivo .env con tus API keys (ver .env.example)
+# ============================================================
+
+services:
+  opencode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: opencode-evolved:latest
+    container_name: opencode_evolved
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      OPENCODE_WORKSPACE: /workspace
+      TZ: "${TZ:-America/Bogota}"
+      DISPLAY: ":99"
+
+      # ── FreeModel (GPT-4o gratis) ─────────────────────────
+      FREEMODEL_API_KEY: "${FREEMODEL_API_KEY:-}"
+      FREEMODEL_BASE_URL: "${FREEMODEL_BASE_URL:-https://api.freemodel.dev/v1}"
+      FREEMODEL_MODEL: "${FREEMODEL_MODEL:-gpt-4o}"
+
+      # ── OpenAI ───────────────────────────────────────────
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+
+      # ── Anthropic ─────────────────────────────────────────
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+
+      # ── Google ────────────────────────────────────────────
+      GOOGLE_GENERATIVE_AI_API_KEY: "${GOOGLE_GENERATIVE_AI_API_KEY:-}"
+
+      # ── Gratuitos ─────────────────────────────────────────
+      GROQ_API_KEY: "${GROQ_API_KEY:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      CEREBRAS_API_KEY: "${CEREBRAS_API_KEY:-}"
+      TOGETHER_AI_API_KEY: "${TOGETHER_AI_API_KEY:-}"
+      MISTRAL_API_KEY: "${MISTRAL_API_KEY:-}"
+      XAI_API_KEY: "${XAI_API_KEY:-}"
+
+      # ── Extras ───────────────────────────────────────────
+      PUTER_AUTH_TOKEN: "${PUTER_AUTH_TOKEN:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+
+      # ── Base de datos ─────────────────────────────────────
+      EASYPANEL_DATABASE_URL: "${EASYPANEL_DATABASE_URL:-}"
+      DB_HOST: "${DB_HOST:-postgres}"
+      DB_PORT: "${DB_PORT:-5432}"
+      DB_USER: "${DB_USER:-opencode}"
+      DB_PASSWORD: "${DB_PASSWORD:-}"
+      DB_NAME: "${DB_NAME:-opencode}"
+
+      # ── Ollama ────────────────────────────────────────────
+      OLLAMA_HOST: "http://ollama:11434"
+
+    volumes:
+      - opencode_workspace:/workspace
+      - opencode_data:/root/.local/share/opencode
+      - opencode_config:/root/.config/opencode
+    depends_on:
+      - ollama
+    networks:
+      - opencode_net
+
+  # ── PostgreSQL local (para desarrollo) ──────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: opencode_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${DB_NAME:-opencode}"
+      POSTGRES_USER: "${DB_USER:-opencode}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:-opencode123}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./artifacts/opencode-ui/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - opencode_net
+
+  # ── Ollama — modelos locales gratuitos ───────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: opencode_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - opencode_net
+    # GPU NVIDIA (descomenta si tienes GPU):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  opencode_workspace:
+  opencode_data:
+  opencode_config:
+  postgres_data:
+  ollama_models:
+
+networks:
+  opencode_net:
+    driver: bridge
