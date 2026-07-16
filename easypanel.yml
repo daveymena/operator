@@ -1,15 +1,18 @@
 services:
   operator:
-    name: Operator AI
-    description: Bridge API - Sistema autónomo de IA
+    name: Operator AI + OpenCode Web
+    description: Bridge API + OpenCode Web original - Sistema autónomo completo
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+      - "21294:21294"
     env:
       - NODE_ENV=production
       - BRAIN_BACKEND=nvidia
+      - PORT=3000
+      - OPENCODE_PORT=21294
       - NVIDIA_API_KEY=${NVIDIA_API_KEY}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - OPENCODE_ZEN_API_KEY=${OPENCODE_ZEN_API_KEY}
@@ -23,39 +26,16 @@ services:
       - FACEBOOK_ACCESS_TOKEN=${FACEBOOK_ACCESS_TOKEN}
       - FACEBOOK_AD_ACCOUNT_ID=${FACEBOOK_AD_ACCOUNT_ID}
       - FACEBOOK_PAGE_ID=${FACEBOOK_PAGE_ID}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
+      - TOGETHER_AI_API_KEY=${TOGETHER_AI_API_KEY}
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - XAI_API_KEY=${XAI_API_KEY}
+      - FREEMODEL_API_KEY=${FREEMODEL_API_KEY}
+      - OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD}
     healthcheck:
       path: /health
       port: 3000
     domains:
       - ${DOMAIN}
-
-  opencode:
-    name: OpenCode Web
-    description: Interfaz web original de OpenCode
-    build:
-      context: .
-      dockerfile: Dockerfile.opencode
-    ports:
-      - "21294:21294"
-    env:
-      - PORT=21294
-      - NODE_ENV=production
-      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY}
-      - TOGETHER_AI_API_KEY=${TOGETHER_AI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
-      - XAI_API_KEY=${XAI_API_KEY}
-      - GITHUB_COPILOT_TOKEN=${GITHUB_COPILOT_TOKEN}
-      - OPENCODE_ZEN_API_KEY=${OPENCODE_ZEN_API_KEY}
-      - FREEMODEL_API_KEY=${FREEMODEL_API_KEY}
-      - OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD}
-    healthcheck:
-      path: /health
-      port: 21294
-    domains:
-      - opencode-${DOMAIN}
