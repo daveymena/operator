@@ -1,0 +1,15 @@
+{
+  "ot": "",
+  "cuenta": "",
+  "ciudad": "",
+  "nodo": "",
+  "tipo": "MANTENIMIENTO FTTH",
+  "serial_ont": "",
+  "seriales": [],
+  "aplicaMaterial": "No",
+  "status": "pending",
+  "nombre": "",
+  "notes": "",
+  "control_remoto": 0,
+  "nueva": false
+}

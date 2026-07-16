@@ -1,0 +1,142 @@
+[
+  {
+    "idx": 0,
+    "title": "Correo electrónico *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 1,
+    "title": "Ciudad *",
+    "type": "select",
+    "value": "",
+    "options": [
+      "Elegir",
+      "Cali",
+      "Palmira",
+      "Tulua",
+      "Espinal",
+      "Ibague",
+      "Florencia",
+      "Elegir",
+      "BLINDAJE",
+      "DEMOSTRACION",
+      "DESCONEXIONES",
+      "INSTALACIONES",
+      "INSTALACIONES DTH",
+      "INSTALACIONES FTTH",
+      "MANTENIMIENTO ESPECIAL",
+      "MANTENIMIENTOS",
+      "MANTENIMIENTOS DTH",
+      "MANTENIMIENTOS FTTH",
+      "ORDEN ESPECIAL",
+      "POSTVENTA",
+      "POSTVENTA DTH",
+      "POSTVENTA FTTH",
+      "RECONEXIONES",
+      "TRASLADOS",
+      "TRASLADOS DTH",
+      "TRASLADOS FTTH",
+      "VENTAS TECNICO",
+      "ARREGLO PYMES",
+      "INSTALACIONES PYMES"
+    ]
+  },
+  {
+    "idx": 2,
+    "title": "Cuenta *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 3,
+    "title": "Nodo *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 4,
+    "title": "Orden *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 5,
+    "title": "Tipo de Trabajo *",
+    "type": "select",
+    "value": "",
+    "options": [
+      "Elegir",
+      "Cali",
+      "Palmira",
+      "Tulua",
+      "Espinal",
+      "Ibague",
+      "Florencia",
+      "Elegir",
+      "BLINDAJE",
+      "DEMOSTRACION",
+      "DESCONEXIONES",
+      "INSTALACIONES",
+      "INSTALACIONES DTH",
+      "INSTALACIONES FTTH",
+      "MANTENIMIENTO ESPECIAL",
+      "MANTENIMIENTOS",
+      "MANTENIMIENTOS DTH",
+      "MANTENIMIENTOS FTTH",
+      "ORDEN ESPECIAL",
+      "POSTVENTA",
+      "POSTVENTA DTH",
+      "POSTVENTA FTTH",
+      "RECONEXIONES",
+      "TRASLADOS",
+      "TRASLADOS DTH",
+      "TRASLADOS FTTH",
+      "VENTAS TECNICO",
+      "ARREGLO PYMES",
+      "INSTALACIONES PYMES"
+    ]
+  },
+  {
+    "idx": 6,
+    "title": "Cedula Tecnico *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 7,
+    "title": "Nombre del Tecnico *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 8,
+    "title": "Cedula Auxiliar *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 9,
+    "title": "Nombre del Auxiliar *",
+    "type": "input",
+    "value": "",
+    "options": []
+  },
+  {
+    "idx": 10,
+    "title": "Aplica Material *",
+    "type": "radio",
+    "value": "",
+    "options": [
+      "Si",
+      "No"
+    ]
+  }
+]

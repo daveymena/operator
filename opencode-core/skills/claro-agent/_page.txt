@@ -1,0 +1,81 @@
+Orden de Trabajo Virtual
+Version de orden de trabajo 1.0 beta
+Acceder a Google para guardar el progreso. Más información
+* Indica que la pregunta es obligatoria
+Correo electrónico
+*
+Tu dirección de correo electrónico
+Ciudad
+
+*
+Elegir
+Cali
+Palmira
+Tulua
+Espinal
+Ibague
+Florencia
+Cuenta
+*
+Tu respuesta
+Nodo
+
+*
+Tu respuesta
+Orden
+*
+Tu respuesta
+Tipo de Trabajo
+*
+Elegir
+BLINDAJE
+DEMOSTRACION
+DESCONEXIONES
+INSTALACIONES
+INSTALACIONES DTH
+INSTALACIONES FTTH
+MANTENIMIENTO ESPECIAL
+MANTENIMIENTOS
+MANTENIMIENTOS DTH
+MANTENIMIENTOS FTTH
+ORDEN ESPECIAL
+POSTVENTA
+POSTVENTA DTH
+POSTVENTA FTTH
+RECONEXIONES
+TRASLADOS
+TRASLADOS DTH
+TRASLADOS FTTH
+VENTAS TECNICO
+ARREGLO PYMES
+INSTALACIONES PYMES
+Cedula Tecnico
+*
+Tu respuesta
+Nombre del Tecnico
+*
+Tu respuesta
+Cedula Auxiliar
+*
+Si trabajó solo coloque un 0
+Tu respuesta
+Nombre del Auxiliar
+*
+Si trabajó solo coloque una X
+Tu respuesta
+Aplica Material
+
+*
+Si
+No
+Siguiente
+Página 1 de 17
+Borrar formulario
+Nunca envíes contraseñas a través de Formularios de Google.
+El formulario se creó en Conectar TV S.A.S.
+
+¿El formulario parece sospechoso? Informe
+
+ Formularios
+ 
+Ayuda y comentarios

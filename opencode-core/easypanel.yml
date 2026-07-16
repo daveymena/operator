@@ -1,0 +1,128 @@
+services:
+  opencode:
+    type: app
+    build:
+      type: dockerfile
+      file: Dockerfile
+    domains:
+      # Web UI (serve.js) en puerto 21294 — interfaz Express con chat, media y APIs
+      - host: "$(PRIMARY_DOMAIN)"
+        port: 21294
+        https: true
+      # Dominio para que el PC Agent se conecte desde fuera del contenedor
+      - host: "agent-$(PRIMARY_DOMAIN)"
+        port: 21291
+        https: true
+      # (Opcional) Exponer el MCP server externamente para clientes MCP
+      # Descomenta si quieres conectar Claude Desktop, VS Code, etc:
+      # - host: "mcp-$(PRIMARY_DOMAIN)"
+      #   port: 21296
+      #   https: true
+    env:
+      PORT: "21294"
+      OPENCODE_WORKSPACE: /workspace
+      OPENCODE_SERVER_PASSWORD: "$(OPENCODE_SERVER_PASSWORD)"
+      OPENCODE_PORT: "21293"
+      OPENCODE_INTERNAL_PORT: "21293"
+      OPERATOR_API_PORT: "3001"
+      WEB_OPERATOR_PORT: "3001"
+      AGENT_WS_PORT: "21291"
+      AGENT_SERVER_URL: "ws://localhost:21291/agent"
+      BRIDGE_PORT: "21295"
+      MIMO_MCP_PORT: "21296"
+      NODE_ENV: "production"
+      TZ: "America/Bogota"
+      DISPLAY: ":99"
+      # Opcional: token para autenticar agentes (si lo habilitas en agent-server.mjs)
+      AGENT_SERVER_TOKEN: "$(AGENT_SERVER_TOKEN)"
+
+      # DB (PostgreSQL - crear servicio separado en EasyPanel)
+      DB_HOST: "$(DB_HOST)"
+      DB_PORT: "$(DB_PORT)"
+      DB_USER: "$(DB_USER)"
+      DB_PASSWORD: "$(DB_PASSWORD)"
+      DB_NAME: "$(DB_NAME)"
+      DATABASE_URL: "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+
+      # APIs de IA
+      GROQ_API_KEY: "$(GROQ_API_KEY)"
+      OPENROUTER_API_KEY: "$(OPENROUTER_API_KEY)"
+      CEREBRAS_API_KEY: "$(CEREBRAS_API_KEY)"
+      TOGETHER_AI_API_KEY: "$(TOGETHER_AI_API_KEY)"
+      ANTHROPIC_API_KEY: "$(ANTHROPIC_API_KEY)"
+      OPENAI_API_KEY: "$(OPENAI_API_KEY)"
+      GOOGLE_GENERATIVE_AI_API_KEY: "$(GOOGLE_GENERATIVE_AI_API_KEY)"
+      MISTRAL_API_KEY: "$(MISTRAL_API_KEY)"
+      XAI_API_KEY: "$(XAI_API_KEY)"
+      PUTER_AUTH_TOKEN: "$(PUTER_AUTH_TOKEN)"
+      OLLAMA_HOST: "$(OLLAMA_HOST)"
+
+      # OpenCode Zen (API gateway de opencode.ai)
+      OPENCODE_ZEN_API_KEY: "$(OPENCODE_ZEN_API_KEY)"
+      FREEMODEL_API_KEY: "$(FREEMODEL_API_KEY)"
+      FREEMODEL_BASE_URL: "$(FREEMODEL_BASE_URL)"
+      FREEMODEL_MODEL: "$(FREEMODEL_MODEL)"
+      GITHUB_COPILOT_TOKEN: "$(GITHUB_COPILOT_TOKEN)"
+      COPILOT_MODEL: "$(COPILOT_MODEL)"
+      GITHUB_COPILOT_ENABLED: "$(GITHUB_COPILOT_ENABLED)"
+      USE_COPILOT_FIRST: "$(USE_COPILOT_FIRST)"
+      SCREENSHOT_QUALITY: "60"
+      SCREENSHOT_SCALE: "0.75"
+      INSTRUCTION_TIMEOUT: "20000"
+
+      # Skills: Claro Agent
+      CLARO_SKILL_SRC: "/app/skills/claro-agent/src"
+      CLARO_SKILL_DATA: "/app/skills-data/claro-agent"
+      CLARO_FORM_URL: "$(CLARO_FORM_URL)"
+      GOOGLE_EMAIL: "$(GOOGLE_EMAIL)"
+      GOOGLE_PASSWORD: "$(GOOGLE_PASSWORD)"
+      GOOGLE_IMAP_PASSWORD: "$(GOOGLE_IMAP_PASSWORD)"
+      TECH_CEDULA: "$(TECH_CEDULA)"
+      TECH_NOMBRE: "$(TECH_NOMBRE)"
+      TECH_TELEFONO: "$(TECH_TELEFONO)"
+      TECH_CIUDAD: "$(TECH_CIUDAD)"
+
+      # Skills: Preoperacional Nova
+      PREOP_SKILL_SRC: "/app/skills/preoperacional-nova/src"
+      PREOP_SKILL_DATA: "/app/skills-data/preoperacional-nova"
+      PREOP_URL: "$(PREOP_URL)"
+      PREOP_EMAIL: "$(PREOP_EMAIL)"
+      PREOP_PASSWORD: "$(PREOP_PASSWORD)"
+      PREOP_SUPERVISOR: "$(PREOP_SUPERVISOR)"
+      PREOP_SCHEDULE_HOUR: "$(PREOP_SCHEDULE_HOUR)"
+      PREOP_SCHEDULE_MINUTE: "$(PREOP_SCHEDULE_MINUTE)"
+      SMTP_HOST: "$(SMTP_HOST)"
+      SMTP_PORT: "$(SMTP_PORT)"
+      SMTP_USER: "$(SMTP_USER)"
+      SMTP_PASS: "$(SMTP_PASS)"
+      EMAIL_FROM: "$(EMAIL_FROM)"
+      EMAIL_TO: "$(EMAIL_TO)"
+      TELEGRAM_BOT_TOKEN: "$(TELEGRAM_BOT_TOKEN)"
+      TELEGRAM_CHAT_ID: "$(TELEGRAM_CHAT_ID)"
+
+      # Puppeteer / Chromium
+      PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"
+      CHROME_BIN: "/usr/bin/chromium"
+      PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright"
+
+    mounts:
+      - type: volume
+        name: opencode-workspace
+        mountPath: /workspace
+      - type: volume
+        name: opencode-data
+        mountPath: /root/.local/share/opencode
+      - type: volume
+        name: opencode-config
+        mountPath: /root/.config/opencode
+      - type: volume
+        name: opencode-skills-data
+        mountPath: /app/skills-data
+      # Para integrar los proyectos externos, copia/monta sus archivos en estas rutas del host.
+      # Descomenta y ajusta hostPath según tu servidor:
+      # - type: bind
+      #   hostPath: /srv/claro_agente_final
+      #   mountPath: /app/skills/claro-agent/src
+      # - type: bind
+      #   hostPath: /srv/preoperacional-Nova
+      #   mountPath: /app/skills/preoperacional-nova/src

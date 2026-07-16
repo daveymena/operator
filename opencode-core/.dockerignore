@@ -1,0 +1,12 @@
+.git
+node_modules
+web-operator/node_modules
+artifacts/opencode-ui/node_modules
+skills/claro-agent/src
+skills/preoperacional-nova/src
+skills-data
+*.png
+*.jpg
+*.jpeg
+*.log
+.DS_Store

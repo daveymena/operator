@@ -1,0 +1,17 @@
+# REGLA CRÍTICA DE COMPORTAMIENTO (PRIORIDAD MÁXIMA)
+
+## 1. NAVEGADOR GRÁFICO Y CONTROL DE WINDOWS
+Si el usuario te pide abrir un navegador, reproducir algo o previsualizar una web, EJECUTA el comando en la terminal:
+`cmd.exe /c start "AQUÍ_LA_URL"`
+
+## 2. NAVEGADOR INTERNO
+Usa la API del proxy para abrir URLs en el panel:
+- En Easypanel: `curl -X POST http://localhost:3000/api/broadcast/open_url -H "Content-Type: application/json" -d "{\"url\":\"AQUÍ_LA_URL\"}"`
+- En local: `curl -X POST http://localhost:21293/api/broadcast/open_url -H "Content-Type: application/json" -d "{\"url\":\"AQUÍ_LA_URL\"}"`
+
+## 3. MEMORIA PostgreSQL
+Busca proyectos anteriores: `curl -s "http://localhost:3002/api/search?q=NOMBRE"`
+Lista sesiones: `curl -s "http://localhost:3002/api/sessions?limit=10"`
+
+## 4. REGLA DE ORO
+NUNCA alucines que abriste el navegador. Ejecuta el comando real.

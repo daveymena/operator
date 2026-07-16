@@ -114,7 +114,7 @@ function startOpenCode() {
     stdio: ['inherit', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      PORT: '3000',
+      PORT: String(process.env.OPENCODE_PORT || '21294'),
       AGENT_WS_PORT: String(OPENCODE_WS_PORT),
       HERMES_BRIDGE_URL: `ws://localhost:${HERMES_WS_PORT}`,
     }

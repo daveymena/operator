@@ -1,0 +1,23 @@
+{
+  "name": "opencode-evolved",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenCode Evolved: agente autónomo web + control de PC + skills",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.js",
+    "agent-server": "node agent-server.mjs",
+    "bridge-server": "node bridge-server.mjs",
+    "web-operator": "cd web-operator && node api-server.js",
+    "mcp-server": "node mimo-mcp-server.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 RUN npm install --omit=dev
 
+COPY opencode-core/package*.json ./opencode-core/
+RUN cd opencode-core && npm install --omit=dev 2>/dev/null || true
+
 COPY . .
 
 EXPOSE 3000

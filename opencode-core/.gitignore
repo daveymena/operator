@@ -1,0 +1,52 @@
+node_modules/
+.chrome-session/
+.chrome-debug/
+.site-memory/
+.kiro/
+*.log
+.env
+.env.copilot
+dist/
+build/
+.DS_Store
+package-lock.json
+pnpm-lock.yaml
+
+# Screenshots / PNG (son artifacts temporales)
+web-operator/*.png
+
+# Sesiones de Chrome
+web-operator/.chrome-session-*/
+
+# Media y datos runtime
+media/
+skills-data/
+
+# Perfiles de Chrome (skills) - NO SUBIR
+skills/claro-agent/perfil_chrome/
+skills/claro-agent/perfil_chrome/**
+skills/claro-agent/puppeteer_profile/
+skills/claro-agent/puppeteer_profile/**
+skills/claro-agent/puppeteer_profile_*/
+skills/claro-agent/puppeteer_profile_bak*/
+skills/claro-agent/puppeteer_profile_old*/
+skills/claro-agent/real_user_data_link/
+skills/claro-agent/Profile*/
+skills/claro-agent/*.png
+skills/claro-agent/ordenes_*.json
+skills/claro-agent/output_*.txt
+skills/claro-agent/state_*.png
+
+# Directorios raros
+ Manos/
+ Manos*/
+" Manos"
+
+# Debug scripts (no esenciales)
+web-operator/check-profile9.mjs
+web-operator/connect-fb.mjs
+web-operator/pc-helper.mjs
+web-operator/step1-activate-chrome.mjs
+web-operator/run-facebook-operator.mjs
+web-operator/test-*.mjs
+web-operator/debug-*.mjs
