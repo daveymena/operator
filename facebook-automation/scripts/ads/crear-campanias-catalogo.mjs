@@ -1,42 +1,43 @@
 import fs from 'fs';
 import { setTimeout } from 'timers/promises';
+import { generateAd } from '../../ads/ad-creatives.mjs';
 
 const TOKEN_FILE = 'C:\\Users\\ADMIN\\Music\\proyecto-unificado\\facebook-automation\\tokens\\fb_tokens_output.json';
-const CATALOGO_FILE = 'C:\\Users\\ADMIN\\Music\\proyecto-unificado\\facebook-automation\\tokens\\catalogo-completo-importar.json';
+const CATALOGO_FILE = 'C:\\Users\\ADMIN\\Music\\proyecto-unificado\\facebook-automation\\tokens\\megapack-82-productos.json';
 const LOG_FILE = 'C:\\Users\\ADMIN\\Music\\proyecto-unificado\\facebook-automation\\logs\\campanias-creadas.json';
 
 const FB_GRAPH = 'https://graph.facebook.com/v21.0';
-
 const token = JSON.parse(fs.readFileSync(TOKEN_FILE, 'utf8'));
 const catalogo = JSON.parse(fs.readFileSync(CATALOGO_FILE, 'utf8'));
 
 const AD_ACCOUNT = token.adAccountId || '1545022093928422';
 const ACCESS_TOKEN = token.accessToken;
 const PAGE_ID = token.pageId || '1278583508663384';
+const WHATSAPP_NUMBER = '573206541575';
 
-const CATEGORIES = {
-  laptops: { name: 'Laptops y Portátiles', budget: 8000, keywords: ['laptop', 'portatil', 'macbook', 'notebook', 'computador'], emoji: '💻' },
-  monitores: { name: 'Monitores', budget: 6000, keywords: ['monitor', 'pantalla', 'display'], emoji: '🖥️' },
-  perifericos: { name: 'Periféricos y Accesorios', budget: 5000, keywords: ['mouse', 'teclado', 'combo', 'receptor'], emoji: '⌨️' },
-  audio: { name: 'Audífonos y Diademas', budget: 6000, keywords: ['diadema', 'audifonos', 'gaming', 'gamer', 'astro', 'logitech'], emoji: '🎧' },
-};
+// === CATEGORÍAS actualizadas con presupuestos realistas ===
+const CATEGORIES = [
+  { key: 'diseno',       name: 'Diseño Gráfico y Multimedia',   budget: 10000, emoji: '🎨', match: p => p.price === 20000 && ['Diseño','Gráfico','Photoshop','Ilustración','Logotipos','Lettering','Animación','Canva','Filmora','Premiere','Portadas','Cuadros','Infografías','Sublimados'].some(k => p.name.includes(k)) },
+  { key: 'programacion', name: 'Programación y Tecnología',      budget: 10000, emoji: '💻', match: p => p.price === 20000 && ['Programación','Desarrollo','Web','Videojuegos','Animación 3D','Cinema','WordPress','Interfaces','App','Código','Consola','Reparación','Celulares','Play Station','Car Audio','Ensamblaje','Computadora','Planos'].some(k => p.name.includes(k)) },
+  { key: 'marketing',    name: 'Marketing y Negocios',           budget: 8000,  emoji: '📈', match: p => p.price === 20000 && ['Marketing','SEO','Ecommerce','Marca','Negocios','Libros'].some(k => p.name.includes(k)) },
+  { key: 'idiomas',      name: 'Idiomas y Desarrollo Personal',  budget: 6000,  emoji: '🌎', match: p => p.price === 20000 && ['Inglés','Idiomas','Locución','Psicología','Memoria','Preuniversitario','Pilates','Fitness','Fuerza'].some(k => p.name.includes(k)) },
+  { key: 'ofimatica',    name: 'Oficina y Productividad',        budget: 5000,  emoji: '📊', match: p => p.price === 20000 && ['Excel','Office','Instaladores','WordPress'].some(k => p.name.includes(k)) },
+  { key: 'ingenieria',   name: 'Ingeniería y Arquitectura',      budget: 7000,  emoji: '🏗️', match: p => p.price === 20000 && ['Arquitectura','Ingeniería','Revit','Metrados','Planos','Expedientes','Drywall','Proyectos'].some(k => p.name.includes(k)) },
+  { key: 'hacking',      name: 'Ciberseguridad',                 budget: 5000,  emoji: '🛡️', match: p => p.price === 20000 && ['Hacking'].some(k => p.name.includes(k)) },
+  { key: 'bundle',       name: '🔥 MegaPack Completo',           budget: 15000, emoji: '🚀', match: p => p.name === 'MegaPack Completo' },
+  { key: 'piano',        name: '🎹 Curso de Piano',              budget: 5000,  emoji: '🎵', match: p => p.name === 'MegaPack Completo de Piano' },
+];
 
-function groupByCategory() {
-  const grouped = {};
-  for (const [key, cat] of Object.entries(CATEGORIES)) {
-    grouped[key] = {
-      ...cat,
-      products: catalogo.filter(p => cat.keywords.some(k => p.name.toLowerCase().includes(k)))
-    };
-  }
-  return grouped;
+function getWhatsAppLink(product) {
+  const text = encodeURIComponent(`Hola! Me interesa "${product.name}" ($${(product.price||0).toLocaleString('es-CO')} COP)`);
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${text}`;
 }
 
-async function createCampaign(name, budget, objective = 'OUTCOME_SALES') {
+async function createCampaign(name, budget) {
   const url = `${FB_GRAPH}/act_${AD_ACCOUNT}/campaigns`;
   const params = new URLSearchParams({
     name,
-    objective,
+    objective: 'OUTCOME_SALES',
     status: 'PAUSED',
     special_ad_categories: '[]',
     daily_budget: Math.round(budget * 100),
@@ -60,6 +61,7 @@ async function createAdSet(name, campaignId, budget) {
       geo_locations: { countries: ['CO'] },
       ages: { min: 18, max: 65 },
       genders: [1, 2],
+      interests: [{ id: '6003139266461', name: 'Online Learning' }],
     }),
     start_time: new Date(Date.now() + 86400000).toISOString().split('.')[0] + '+0000',
     access_token: ACCESS_TOKEN,
@@ -69,24 +71,25 @@ async function createAdSet(name, campaignId, budget) {
 }
 
 async function createAd(name, adSetId, product) {
+  const ad = generateAd(product);
+  const link = getWhatsAppLink(product);
+
   const creativeParams = {
     object_story_spec: {
       page_id: PAGE_ID,
       link_data: {
-        link: product.paymentLinkCustom || '#',
-        message: `${product.name}\n\n${product.description || ''}\n\n💰 Precio: $${(product.price || 0).toLocaleString('es-CO')} COP`,
-        name: product.name.substring(0, 50),
-        description: (product.description || '').substring(0, 120),
-        call_to_action: { type: 'SHOP_NOW' },
+        link,
+        message: ad.primaryText,
+        name: ad.headline.substring(0, 40),
+        description: ad.description,
+        call_to_action: { type: 'LEARN_MORE' },
       },
     },
     degrees_of_freedom_spec: {
       creative_features_spec: { standard_enhancements: { enroll_status: 'OPT_IN' } },
     },
   };
-  if (product.images && product.images[0] && !product.images[0].includes('data:image')) {
-    creativeParams.object_story_spec.link_data.image_url = product.images[0];
-  }
+
   const creativeUrl = `${FB_GRAPH}/act_${AD_ACCOUNT}/adcreatives`;
   const creativeBody = new URLSearchParams({
     name: `Creative: ${product.name.substring(0, 50)}`,
@@ -95,9 +98,8 @@ async function createAd(name, adSetId, product) {
   });
   const creativeRes = await fetch(creativeUrl, { method: 'POST', body: creativeBody });
   const creative = await creativeRes.json();
-  if (!creative.id) {
-    return { error: creative };
-  }
+  if (!creative.id) return { error: creative };
+
   const adUrl = `${FB_GRAPH}/act_${AD_ACCOUNT}/ads`;
   const adBody = new URLSearchParams({
     name,
@@ -111,72 +113,81 @@ async function createAd(name, adSetId, product) {
 }
 
 async function main() {
-  console.log('\n╔════════════════════════════════════════════════════╗');
-  console.log('║   🚀 CREANDO CAMPAÑAS DRAFT DESDE EL CATÁLOGO     ║');
-  console.log('╚════════════════════════════════════════════════════╝\n');
-  console.log(`Token: ${ACCESS_TOKEN.substring(0, 30)}...`);
-  console.log(`Ad Account: ${AD_ACCOUNT}`);
-  console.log(`Page ID: ${PAGE_ID}`);
-  console.log(`Productos en catálogo: ${catalogo.length}`);
-  const grouped = groupByCategory();
+  console.log('\n╔══════════════════════════════════════════════════════════╗');
+  console.log('║   🚀 CREANDO CAMPAÑAS DRAFT — CATÁLOGO DIGITAL 20K      ║');
+  console.log('╚══════════════════════════════════════════════════════════╝\n');
+
+  console.log(`Productos: ${catalogo.length}`);
+  console.log(`  20.000 COP: ${catalogo.filter(p => p.price === 20000).length}`);
+  console.log(`  60.000 COP: ${catalogo.filter(p => p.price === 60000).length}`);
+  console.log(`Token: ${(ACCESS_TOKEN||'').substring(0, 20)}...`);
+
+  const grouped = CATEGORIES.map(cat => ({
+    ...cat,
+    products: catalogo.filter(cat.match)
+  }));
+
   const results = { campaigns: [], adsets: [], ads: [], errors: [] };
-  for (const [catKey, catData] of Object.entries(grouped)) {
-    if (catData.products.length === 0) {
-      console.log(`\n  ⚠️ ${catData.emoji} ${catData.name}: 0 productos (saltando)`);
+
+  for (const cat of grouped) {
+    if (cat.products.length === 0) {
+      console.log(`\n  ⚠️  ${cat.emoji} ${cat.name}: 0 productos`);
       continue;
     }
-    console.log(`\n  ${catData.emoji} ${catData.name} (${catData.products.length} productos) - $${catData.budget}/día`);
-    console.log(`  ${'─'.repeat(50)}`);
-    const campaignName = `[DRAFT] ${catData.emoji} ${catData.name} - VentasPro`;
-    const campaign = await createCampaign(campaignName, catData.budget);
-    if (campaign.id) {
-      console.log(`  ✅ Campaña: ${campaignName} (ID: ${campaign.id})`);
-      results.campaigns.push({ category: catKey, name: campaignName, id: campaign.id, budget: catData.budget });
-      const adSetName = `AdSet: ${catData.name} - ${catData.products.length} productos`;
-      const adSet = await createAdSet(adSetName, campaign.id, catData.budget);
-      if (adSet.id) {
-        console.log(`  ✅ AdSet: ${adSetName} (ID: ${adSet.id})`);
-        results.adsets.push({ category: catKey, name: adSetName, id: adSet.id });
-        for (let i = 0; i < Math.min(catData.products.length, 5); i++) {
-          const product = catData.products[i];
-          const adName = `Ad: ${product.name.substring(0, 40)}`;
-          console.log(`    📦 Anuncio ${i+1}: ${product.name.substring(0, 50)}...`);
-          const ad = await createAd(adName, adSet.id, product);
-          if (ad.id) {
-            console.log(`      ✅ Ads ID: ${ad.id}`);
-            results.ads.push({ category: catKey, product: product.name, id: ad.id });
-          } else {
-            console.log(`      ❌ Error: ${JSON.stringify(ad.error || ad).substring(0, 100)}`);
-            results.errors.push({ category: catKey, product: product.name, error: ad });
-          }
-          await setTimeout(500);
-        }
+
+    console.log(`\n  ${cat.emoji} ${cat.name} (${cat.products.length} productos) — $${cat.budget.toLocaleString()}/día`);
+    console.log(`  ${'─'.repeat(55)}`);
+
+    const campaignName = `[VENTAS] ${cat.emoji} ${cat.name} - 20K`;
+    const campaign = await createCampaign(campaignName, cat.budget);
+    if (!campaign.id) {
+      console.log(`  ❌ Error campaña: ${JSON.stringify(campaign).substring(0, 100)}`);
+      results.errors.push({ category: cat.name, action: 'create_campaign', error: campaign });
+      continue;
+    }
+    console.log(`  ✅ Campaña: ${campaign.id}`);
+    results.campaigns.push({ category: cat.name, id: campaign.id, budget: cat.budget });
+
+    const adSetName = `AdSet: ${cat.name} - ${cat.products.length} productos`;
+    const adSet = await createAdSet(adSetName, campaign.id, cat.budget);
+    if (!adSet.id) {
+      console.log(`  ❌ Error adset: ${JSON.stringify(adSet).substring(0, 100)}`);
+      results.errors.push({ category: cat.name, action: 'create_adset', error: adSet });
+      continue;
+    }
+    console.log(`  ✅ AdSet: ${adSet.id}`);
+    results.adsets.push({ category: cat.name, id: adSet.id });
+
+    for (let i = 0; i < Math.min(cat.products.length, 3); i++) {
+      const product = cat.products[i];
+      const adName = `Ad: ${product.name.substring(0, 35)}`;
+      console.log(`    📦 ${i+1}. ${product.name.substring(0, 45)}`);
+      const ad = await createAd(adName, adSet.id, product);
+      if (ad.id) {
+        console.log(`      ✅ ID: ${ad.id}`);
+        results.ads.push({ category: cat.name, product: product.name, id: ad.id });
       } else {
-        console.log(`  ❌ Error AdSet: ${JSON.stringify(adSet).substring(0, 100)}`);
-        results.errors.push({ category: catKey, action: 'create_adset', error: adSet });
+        console.log(`      ❌ Error: ${JSON.stringify(ad.error || ad).substring(0, 80)}`);
+        results.errors.push({ category: cat.name, product: product.name, error: ad });
       }
-    } else {
-      console.log(`  ❌ Error Campaña: ${JSON.stringify(campaign).substring(0, 100)}`);
-      results.errors.push({ category: catKey, action: 'create_campaign', error: campaign });
+      await setTimeout(500);
     }
     await setTimeout(1000);
   }
+
   console.log(`\n${'═'.repeat(55)}`);
   console.log('  📊 RESUMEN');
-  console.log(`  Campañas creadas: ${results.campaigns.length}`);
-  console.log(`  AdSets creados: ${results.adsets.length}`);
-  console.log(`  Anuncios creados: ${results.ads.length}`);
-  console.log(`  Errores: ${results.errors.length}`);
+  console.log(`  Campañas: ${results.campaigns.length}`);
+  console.log(`  AdSets:    ${results.adsets.length}`);
+  console.log(`  Anuncios:  ${results.ads.length}`);
+  console.log(`  Errores:   ${results.errors.length}`);
   const totalBudget = results.campaigns.reduce((s, c) => s + c.budget, 0);
-  console.log(`  Presupuesto total diario: $${totalBudget.toLocaleString()} COP`);
-  console.log(`  Estado: PAUSED (borradores listos para activar)`);
+  console.log(`  Presupuesto diario total: $${totalBudget.toLocaleString()} COP`);
+  console.log(`  Estado: PAUSED`);
+
   fs.mkdirSync('C:\\Users\\ADMIN\\Music\\proyecto-unificado\\facebook-automation\\logs', { recursive: true });
   fs.writeFileSync(LOG_FILE, JSON.stringify(results, null, 2));
-  console.log(`\n  📝 Log guardado en: ${LOG_FILE}`);
-  console.log(`\n${'═'.repeat(55)}`);
-  console.log('  ✅ Para ACTIVAR las campañas, ve a Ads Manager:');
-  console.log('  https://adsmanager.facebook.com/adsmanager/manage/campaigns');
-  console.log('  Filtra por PAUSED y activa las que quieras.');
+  console.log(`\n  📝 Log: ${LOG_FILE}`);
 }
 
-main().catch(e => console.log('ERROR FATAL:', e.message));
+main().catch(e => console.log('FATAL:', e.message));

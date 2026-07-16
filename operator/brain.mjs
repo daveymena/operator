@@ -58,7 +58,7 @@ export class Brain {
     const prompt = this._buildPrompt(task, state, knowledge, history);
 
     const backends = this.backend === 'auto'
-      ? ['nvidia', 'hermes', 'opencode', 'groq', 'bridge', 'local']
+      ? ['nvidia', 'copilot', 'opencodeGo', 'hermes', 'opencode', 'groq', 'bridge', 'local']
       : [this.backend];
 
     let lastError = '';
@@ -106,7 +106,7 @@ export class Brain {
       const res = await axios.post(`${this.nvidiaUrl}/chat/completions`, {
         model: 'nvidia/nemotron-3-super-120b-a12b',
         messages: [
-          { role: 'system', content: 'Eres un operador de PC. Decide la siguiente acción. Responde SOLO con JSON: {"thought":"...","action":{"type":"COMANDO","params":{}},"done":false,"reason":"..."}' },
+          { role: 'system', content: 'Eres un operador de PC. Responde SOLO con JSON. Acciones: screenshot, browser_goto, browser_click(text), browser_type(text), browser_evaluate(code), powershell, wait, done. Formato: {"thought":"...","action":{"type":"comando","params":{}},"done":false,"reason":"..."}' },
           { role: 'user', content: promptShort }
         ],
         temperature: 0.1,
@@ -119,6 +119,64 @@ export class Brain {
       return this._parseJSON(res.data.choices[0].message.content);
     } catch (e) {
       if (this.verbose) console.log(`  ⚠️ NVIDIA error: ${e.message}`);
+      return null;
+    }
+  }
+
+  async _copilot(prompt) {
+    const cpToken = process.env.GITHUB_COPILOT_TOKEN || process.env.GITHUB_TOKEN;
+    if (!cpToken || cpToken.length < 10) return null;
+    try {
+      const { default: axios } = await import('axios');
+      const res = await axios.post('https://api.githubcopilot.com/chat/completions', {
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'Eres un operador autonomo de PC. Responde SOLO con JSON exactamente este formato: {"thought":"razonamiento","action":{"type":"COMANDO","params":{}},"done":false,"reason":"por que"}. COMANDOS: screenshot, browser_goto, browser_click, browser_type, browser_evaluate, powershell, keyboard_type, wait, done' },
+          { role: 'user', content: prompt.length > 6000 ? prompt.substring(0, 6000) + '\n...[truncado]' : prompt }
+        ],
+        temperature: 0.2,
+        max_tokens: 500
+      }, {
+        headers: { 'Authorization': `Bearer ${cpToken}`, 'Content-Type': 'application/json' },
+        timeout: 20000
+      });
+      if (!res.data?.choices?.[0]?.message?.content) return null;
+      return this._parseJSON(res.data.choices[0].message.content);
+    } catch { return null; }
+  }
+
+  async _opencode(prompt) {
+    return this._opencodeGo(prompt);
+  }
+
+  async _opencodeGo(prompt) {
+    const goKey = process.env.OPENCODE_GO_API_KEY || process.env.OPENCODE_ZEN_API_KEY;
+    if (!goKey || goKey.length < 10) return null;
+    try {
+      const { default: axios } = await import('axios');
+      const res = await axios.post('https://opencode.ai/zen/go/v1/chat/completions', {
+        model: 'kimi-k2.6',
+        messages: [
+          { role: 'system', content: 'Eres un operador autonomo de PC. IMPORTANTE: Responde UNICAMENTE con el JSON solicitado. No expliques nada, no añadas texto, solo el JSON.' },
+          { role: 'user', content: prompt.length > 6000 ? prompt.substring(0, 6000) + '\n...[truncado]' : prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 800
+      }, {
+        headers: { 'Authorization': `Bearer ${goKey}`, 'Content-Type': 'application/json' },
+        timeout: 20000
+      });
+      if (!res.data?.choices?.[0]?.message?.content) return null;
+      const content = res.data.choices[0].message.content;
+      const parsed = this._parseJSON(content);
+      if (parsed) return parsed;
+      const jsonMatch = content.match(/\{[\s\S]*"thought"[\s\S]*"action"[\s\S]*\}/);
+      if (jsonMatch) return this._parseJSON(jsonMatch[0]);
+      const anyJson = content.match(/\{[\s\S]*\}/);
+      if (anyJson) return this._parseJSON(anyJson[0]);
+      return null;
+    } catch (e) {
+      if (this.verbose) console.log(`  ⚠️ OpenCodeGo error: ${e.message}`);
       return null;
     }
   }
@@ -255,22 +313,32 @@ export class Brain {
   }
 
   _getProviderInfo() {
-    return `PROVEEDORES DE IA (verificados):
+    return `PROVEEDORES DE IA:
 
-🔥 NVIDIA NIM (ACTIVO - predeterminado)
-   API Key: ✅ configurada
-   Modelo: ${this.nvidiaModel}\n   118 modelos: deepseek-v4-flash/pro, nemotron-3-super, llama-3.3-nemotron, kimi-k2.6, qwen3.5, glm5, etc.
+🔥 NVIDIA NIM (ACTIVO - default)
+   Key: ✅ | 118 modelos
+   Modelo: nvidia/nemotron-3-super
 
-⏸️ OpenCode Engine (:21294) — No ejecutándose actualmente
-⏸️ Hermes CLI — Instalado, requiere Python + venv
-⏸️ Groq API — Sin API key configurada
-⏸️ FreeModel.dev — Key expirada o requiere pago
-⏸️ GitHub Copilot — Token expirado
+🔥 GitHub Copilot (ACTIVO)
+   Key: ✅ | Modelo: gpt-4o
+   Alternativos: claude-sonnet, gemini-pro
 
-MÁS PROVEEDORES (requieren API keys):
-opencode-zen, opencode-go, nous (gratis OAuth), gemini, deepseek, anthropic, openai, z.ai/glm, kimi, xiaomi/mimo, minimax, huggingface, xAI/grok, alibaba/qwen, arcee, stepfun, gmi, ollama-cloud, lm studio (local)
+🔥 OpenCode Go (ACTIVO)
+   Key: ✅ | Modelo: kimi-k2.6
+   Tambien: glm-5.1, mimo-v2.5, minimax-m2.7, qwen3.6
 
-Usando: ${this.nvidiaModel} vía NVIDIA NIM`;
+⏸️ OpenCode Zen — Sin key valida
+⏸️ OpenAI — Key expirada (401)
+⏸️ FreeModel.dev — Pago requerido (402)
+⏸️ OpenCode Engine (:21294) — No ejecutandose
+⏸️ Hermes CLI — Instalado, requiere Python
+⏸️ Groq API — Sin API key
+
+Mas: nous (gratis OAuth), gemini, deepseek, anthropic, z.ai/glm,
+kimi, xiaomi/mimo, minimax, huggingface, xAI/grok, alibaba/qwen,
+arcee, stepfun, gmi, ollama-cloud, lm studio
+
+Prioridad auto: NVIDIA > Copilot > OpenCodeGo > Hermes > Engine > Groq > Bridge > Local`;
   }
 
   _buildPrompt(task, state, knowledge, history) {
@@ -304,6 +372,7 @@ ${lastActions || '  (primer paso)'}
 COMANDOS:
 screenshot | mouse_move | mouse_click | keyboard_type | keyboard_press
 powershell | open_url | read_file | write_file | list_dir | sysinfo
+browser_goto | browser_click | browser_type | browser_evaluate | browser_screenshot
 wait | done
 
 Responde SOLO con JSON:
@@ -320,10 +389,10 @@ Tarea COMPLETA → { "done": true }`;
 
   _parseJSON(text) {
     if (!text) return null;
-    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').replace(/^\uFEFF/, '').trim();
     try { return JSON.parse(cleaned); } catch {}
     const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) try { return JSON.parse(match[0]); } catch {}
+    if (match) try { return JSON.parse(match[0].replace(/^\uFEFF/, '')); } catch {}
     return null;
   }
 }

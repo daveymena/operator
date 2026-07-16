@@ -2,12 +2,19 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { setTimeout as sleep } from 'timers/promises';
+import dotenv from 'dotenv';
 import { Brain } from './operator/brain.mjs';
 import { BridgeClient } from './operator/bridge-client.mjs';
 import { Memory } from './operator/memory.mjs';
 import { Knowledge } from './operator/knowledge.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const envPath = path.join(__dirname, 'config', '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  if (process.argv.includes('--verbose') || process.argv.includes('--debug')) console.log(`  📄 .env cargado: ${envPath}`);
+}
 const CTX_FILE = path.join(__dirname, 'context.json');
 const MAX_STEPS = 50;
 
@@ -26,9 +33,11 @@ function parseArgs() {
   return { flags, task: positional.join(' ') };
 }
 
-async function runTask(task, options = {}) {
+export async function runTask(task, options = {}) {
   const memory = new Memory().init(task);
   const knowledge = new Knowledge();
+  const onProgress = options.onProgress || (() => {});
+  const { execute } = await import('./operator/actions.mjs');
   const bridge = new BridgeClient({ verbose: options.verbose });
   const brain = new Brain({
     groqKey: options.groqKey || process.env.GROQ_API_KEY,
@@ -37,82 +46,62 @@ async function runTask(task, options = {}) {
     bridge
   });
 
-  await bridge.connect();
+  const useBridge = options.useBridge !== false && await bridge.connect();
+  const execAction = useBridge ? (a) => bridge.execute(a) : execute;
 
-  log(`\n╔════════════════════════════════════════════════════╗`);
-  log(`║     🤖 OPERATOR - SISTEMA AUTÓNOMO TOTAL          ║`);
-  log(`╚════════════════════════════════════════════════════╝`);
-  log(`\n  🎯 ${task}`);
-  log(`  🧠 Brain: ${brain.backend}`);
-  log(`  🔄 Pasos máx: ${MAX_STEPS}`);
-  log(`  🆔 ID: ${memory.taskId}\n`);
+  onProgress({ type: 'start', task, brain: brain.backend, maxSteps: MAX_STEPS, taskId: memory.taskId });
 
   let knowledgeLoaded = false;
   if (options.docs) {
-    log(`  📚 Cargando documentación: ${options.docs}`);
     const docs = await knowledge.load(options.docs);
     memory.setKnowledge(docs);
     knowledgeLoaded = true;
-    log(`  ✅ Documentación cargada (${docs.length} caracteres)\n`);
   } else {
     await knowledge.loadProjectDocs();
     await knowledge.loadOpenCodeTools();
-    log(`  📚 Documentación del proyecto cargada automáticamente\n`);
   }
 
   let state = { description: 'Iniciando...', url: '', cursor: '', windows: '' };
 
   for (let step = 1; step <= MAX_STEPS; step++) {
-    log(`  ── Paso ${step}/${MAX_STEPS} ──`);
+    onProgress({ type: 'step', step, maxSteps: MAX_STEPS });
 
-    const ss = await bridge.execute({ type: 'screenshot', params: { quality: 50, scale: 0.75 } });
+    const ss = await execAction({ type: 'screenshot', params: { quality: 50, scale: 0.75 } });
     if (ss.ok) {
       state.description = await brain.describeImage(ss.base64);
-      log(`  📸 ${path.basename(ss.file)}`);
+      onProgress({ type: 'screenshot', file: path.basename(ss.file), description: state.description });
     }
 
-    const cursor = await bridge.execute({ type: 'get_cursor', params: {} });
+    const cursor = await execAction({ type: 'get_cursor', params: {} });
     if (cursor.ok) state.cursor = cursor.output;
 
     const brainInput = knowledgeLoaded ? knowledge.getSummary() : knowledge.getToolList() + '\n\n' + knowledge.getSummary(5000);
     const decision = await brain.think(task, state, brainInput, memory.getHistory());
 
     if (!decision) {
-      log(`  ❌ El cerebro no pudo decidir. Abortando.`);
       memory.markFailed('brain_no_decision');
+      onProgress({ type: 'error', message: 'El cerebro no pudo decidir' });
       break;
     }
-
-    log(`  🤔 ${decision.thought}`);
-    log(`  🎬 ${decision.action?.type} ${JSON.stringify(decision.action?.params || {})}`);
 
     if (decision.done) {
-      log(`\n  ✅ ${decision.reason || 'Completado!'}`);
       memory.markDone(decision.reason || 'completada');
+      onProgress({ type: 'done', reason: decision.reason || 'Completado!', backend: decision._backend });
       break;
     }
 
-    const result = await bridge.execute(decision.action);
-    log(`  📊 ${result.ok ? '✅' : '❌'} (${result.duration || 0}ms)`);
-    if (!result.ok && result.error) log(`     ⚠️ ${result.error}`);
-
+    onProgress({ type: 'decision', thought: decision.thought, action: decision.action, backend: decision._backend });
+    const result = await execAction(decision.action);
+    onProgress({ type: 'result', ok: result.ok, error: result.error, duration: result.duration });
     memory.addStep(decision.thought, decision.action, result, state.description);
 
-    if (decision.action?.type === 'mouse_click') await sleep(1500);
-    else if (decision.action?.type === 'keyboard_type') await sleep(500);
-    else if (decision.action?.type === 'open_url' || decision.action?.type === 'powershell') await sleep(2000);
-    else await sleep(800);
+    const delays = { mouse_click: 1500, keyboard_type: 500, open_url: 2000, powershell: 2000 };
+    await sleep(delays[decision.action?.type] || 800);
   }
 
   bridge.close();
   const summary = memory.getSummary();
-  log(`\n${'═'.repeat(55)}`);
-  log(`  📊 ${summary.status === 'completed' ? '✅' : '❌'} ${summary.task}`);
-  log(`     Pasos: ${summary.steps} | ✅ ${summary.successful} | ❌ ${summary.failed}`);
-  log(`     Tiempo: ${summary.duration}`);
-  log(`     Memoria: ${path.basename(memory.file)}`);
-  log(`${'═'.repeat(55)}\n`);
-
+  onProgress({ type: 'summary', ...summary });
   return summary;
 }
 
@@ -174,6 +163,18 @@ async function main() {
   ctx.sessions.push({ timestamp: ctx.lastUsed, task: task.substring(0, 100), status: 'started' });
   fs.writeFileSync(CTX_FILE, JSON.stringify(ctx, null, 2));
 
+  options.onProgress = (msg) => {
+    switch (msg.type) {
+      case 'start': log(`\n╔════════════════════════════════════════════════════╗\n║     🤖 OPERATOR - SISTEMA AUTÓNOMO TOTAL          ║\n╚════════════════════════════════════════════════════╝\n\n  🎯 ${msg.task}\n  🧠 Brain: ${msg.brain}\n  🔄 Pasos máx: ${msg.maxSteps}\n  🆔 ID: ${msg.taskId}\n`); break;
+      case 'step': log(`  ── Paso ${msg.step}/${msg.maxSteps} ──`); break;
+      case 'screenshot': log(`  📸 ${msg.file}`); break;
+      case 'decision': log(`  🤔 ${msg.thought}\n  🎬 ${msg.action?.type} ${JSON.stringify(msg.action?.params || {})}`); break;
+      case 'result': log(`  📊 ${msg.ok ? '✅' : '❌'} (${msg.duration || 0}ms)${!msg.ok && msg.error ? `\n     ⚠️ ${msg.error}` : ''}`); break;
+      case 'done': log(`\n  ✅ ${msg.reason}`); break;
+      case 'error': log(`  ❌ ${msg.message}`); break;
+      case 'summary': log(`\n${'═'.repeat(55)}\n  📊 ${msg.status === 'completed' ? '✅' : '❌'} ${msg.task}\n     Pasos: ${msg.steps} | ✅ ${msg.successful} | ❌ ${msg.failed}\n     Tiempo: ${msg.duration}\n${'═'.repeat(55)}\n`); break;
+    }
+  };
   await runTask(task, options);
 }
 

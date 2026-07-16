@@ -1,53 +1,62 @@
-﻿{
-    "initialized":  true,
-    "sessions":  [
-
-                 ],
-    "created":  "2026-07-16T01:50:25.729Z",
-    "version":  "1.0",
-    "lastUsed":  "2026-07-16T01:50:25.730Z",
-    "providers":  [
-                      {
-                          "models":  "kimi-k2.5, gpt-5.4-pro, claude-opus-4-6, gemini-3.1-pro, minimax-m2.7, big-pickle",
-                          "status":  "requires OPENCODE_ZEN_API_KEY",
-                          "name":  "OpenCode Zen",
-                          "id":  "opencode-zen"
-                      },
-                      {
-                          "models":  "kimi-k2.6, glm-5.1, mimo-v2.5-pro, qwen3.6-plus",
-                          "status":  "requires OPENCODE_GO_API_KEY",
-                          "name":  "OpenCode Go",
-                          "id":  "opencode-go"
-                      },
-                      {
-                          "models":  "kimi-k2.6, claude-opus-4.7, gpt-5.5, gemini-3-pro, nemotron-3",
-                          "status":  "gratuito con cuenta",
-                          "name":  "Nous Portal (OAuth)",
-                          "id":  "nous"
-                      },
-                      {
-                          "models":  "gpt-5.4, claude-sonnet-4.6, gemini-3.1-pro",
-                          "status":  "token disponible en hermes-core/.env",
-                          "name":  "GitHub Copilot",
-                          "id":  "copilot"
-                      },
-                      {
-                          "models":  "nemotron-3, deepseek-v3.2, kimi-k2.6",
-                          "status":  "API key hardcodeada en configs",
-                          "name":  "NVIDIA NIM",
-                          "id":  "nvidia"
-                      },
-                      {
-                          "models":  "gpt-4o, claude-sonnet, gemini-pro",
-                          "status":  "key disponible en hermes-core/.env",
-                          "name":  "FreeModel.dev",
-                          "id":  "freemodel"
-                      },
-                      {
-                          "models":  "deepseek-v4-flash, big-pickle, nemotron, hy3",
-                          "status":  ":21294 - siempre disponible",
-                          "name":  "OpenCode Engine (local)",
-                          "id":  "opencode-engine"
-                      }
-                  ]
+{
+  "initialized": true,
+  "sessions": [
+    {
+      "timestamp": "2026-07-16T12:40:27.609Z",
+      "task": "crea un token en usuarios del sistema de facebook",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-16T12:45:49.642Z",
+      "task": "ve a business.facebook.com/latest/settings/system_users?business_id=4482432028697067 y haz click en ",
+      "status": "started"
+    }
+  ],
+  "created": "2026-07-16T01:50:25.729Z",
+  "version": "1.0",
+  "lastUsed": "2026-07-16T12:45:49.642Z",
+  "providers": [
+    {
+      "models": "kimi-k2.5, gpt-5.4-pro, claude-opus-4-6, gemini-3.1-pro, minimax-m2.7, big-pickle",
+      "status": "requires OPENCODE_ZEN_API_KEY",
+      "name": "OpenCode Zen",
+      "id": "opencode-zen"
+    },
+    {
+      "models": "kimi-k2.6, glm-5.1, mimo-v2.5-pro, qwen3.6-plus",
+      "status": "requires OPENCODE_GO_API_KEY",
+      "name": "OpenCode Go",
+      "id": "opencode-go"
+    },
+    {
+      "models": "kimi-k2.6, claude-opus-4.7, gpt-5.5, gemini-3-pro, nemotron-3",
+      "status": "gratuito con cuenta",
+      "name": "Nous Portal (OAuth)",
+      "id": "nous"
+    },
+    {
+      "models": "gpt-5.4, claude-sonnet-4.6, gemini-3.1-pro",
+      "status": "token disponible en hermes-core/.env",
+      "name": "GitHub Copilot",
+      "id": "copilot"
+    },
+    {
+      "models": "nemotron-3, deepseek-v3.2, kimi-k2.6",
+      "status": "API key hardcodeada en configs",
+      "name": "NVIDIA NIM",
+      "id": "nvidia"
+    },
+    {
+      "models": "gpt-4o, claude-sonnet, gemini-pro",
+      "status": "key disponible en hermes-core/.env",
+      "name": "FreeModel.dev",
+      "id": "freemodel"
+    },
+    {
+      "models": "deepseek-v4-flash, big-pickle, nemotron, hy3",
+      "status": ":21294 - siempre disponible",
+      "name": "OpenCode Engine (local)",
+      "id": "opencode-engine"
+    }
+  ]
 }

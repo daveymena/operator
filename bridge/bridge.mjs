@@ -4,19 +4,25 @@ import http from 'http';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
+
+const envPath = path.join(ROOT, 'config', '.env');
+if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+
 const ROOT_PARENT = path.resolve(ROOT, '..');
 const HERMES_CORE = fs.existsSync(path.join(ROOT, 'hermes-core')) ? path.join(ROOT, 'hermes-core') : path.join(ROOT_PARENT, 'hermes-core');
 const OPENCODE_CORE = fs.existsSync(path.join(ROOT, 'opencode-core')) ? path.join(ROOT, 'opencode-core') : path.join(ROOT_PARENT, 'opencode-core');
 
 const BRIDGE_PORT = parseInt(process.env.BRIDGE_PORT || '20100');
+const HTTP_PORT = parseInt(process.env.HTTP_PORT || '3000');
 const HERMES_WS_PORT = parseInt(process.env.HERMES_WS_PORT || '20101');
 const OPENCODE_WS_PORT = parseInt(process.env.OPENCODE_WS_PORT || '20102');
 
-const server = http.createServer();
-const wss = new WebSocketServer({ server });
+const httpServer = http.createServer(handleHTTP);
+const wss = new WebSocketServer({ noServer: true });
 
 let hermesProcess = null;
 let opencodeServer = null;
@@ -31,6 +37,34 @@ function broadcast(msg) {
   const data = JSON.stringify(msg);
   for (const ws of wsClients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  }
+}
+
+async function handleHTTP(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Content-Type', 'application/json');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  const url = new URL(req.url, `http://localhost:${HTTP_PORT}`);
+  try {
+    if (url.pathname === '/' || url.pathname === '/health') {
+      res.writeHead(200); res.end(JSON.stringify({
+        status: 'online',
+        bridge: `ws://localhost:${BRIDGE_PORT}`,
+        clients: wsClients.length,
+        hermes: hermesProcess !== null,
+        opencode: opencodeServer !== null,
+        uptime: process.uptime()
+      }));
+    } else if (url.pathname === '/api/status') {
+      const ctx = JSON.parse(fs.readFileSync(path.join(ROOT, 'context.json'), 'utf8'));
+      res.writeHead(200); res.end(JSON.stringify({ ...ctx, bridge: { port: BRIDGE_PORT, clients: wsClients.length } }));
+    } else {
+      res.writeHead(404); res.end(JSON.stringify({ error: 'ruta no encontrada', rutas: ['/', '/health', '/api/status'] }));
+    }
+  } catch (e) {
+    res.writeHead(500); res.end(JSON.stringify({ error: e.message }));
   }
 }
 
@@ -57,6 +91,11 @@ function startHermes() {
   });
   hermesProcess.stderr.on('data', (d) => {
     process.stderr.write(`[HERMES:err] ${d}`);
+  });
+  hermesProcess.on('error', (e) => {
+    log(`Hermes no disponible: ${e.message}`);
+    hermesProcess = null;
+    broadcast({ type: 'status', system: 'hermes', status: 'error', error: e.message });
   });
   hermesProcess.on('exit', (code) => {
     log(`Hermes terminado (código: ${code})`);
@@ -88,6 +127,11 @@ function startOpenCode() {
   opencodeServer.stderr.on('data', (d) => {
     process.stderr.write(`[OPENCODE:err] ${d}`);
   });
+  opencodeServer.on('error', (e) => {
+    log(`OpenCode no disponible: ${e.message}`);
+    opencodeServer = null;
+    broadcast({ type: 'status', system: 'opencode', status: 'error', error: e.message });
+  });
   opencodeServer.on('exit', (code) => {
     log(`OpenCode terminado (código: ${code})`);
     opencodeServer = null;
@@ -117,41 +161,88 @@ function startPCAgent() {
   opencodeAgent.stderr.on('data', (d) => {
     process.stderr.write(`[PC-AGENT:err] ${d}`);
   });
+  opencodeAgent.on('error', (e) => {
+    log(`PC Agent error: ${e.message}`);
+    opencodeAgent = null;
+  });
   opencodeAgent.on('exit', (code) => {
     log(`PC Agent terminado (código: ${code})`);
     opencodeAgent = null;
   });
 }
 
-wss.on('connection', (ws, req) => {
+function handleWS(ws, req) {
   wsClients.push(ws);
-  log(`Cliente conectado desde ${req.socket.remoteAddress}`);
+  const clientAddr = req.socket.remoteAddress;
+  log(`Cliente conectado desde ${clientAddr}`);
 
   ws.send(JSON.stringify({
     type: 'bridge_status',
+    port: BRIDGE_PORT,
     hermes: hermesProcess !== null,
     opencode: opencodeServer !== null,
     pc_agent: opencodeAgent !== null,
   }));
 
-  ws.on('message', (data) => {
+  ws.on('message', async (raw) => {
     try {
-      const msg = JSON.parse(data.toString());
-      if (msg.type === 'hermes_command') {
-        if (hermesProcess) {
-          hermesProcess.stdin.write(msg.command + '\n');
+      const msg = JSON.parse(raw.toString());
+
+      switch (msg.type) {
+        case 'task': {
+          const { runTask } = await import('../operator.mjs');
+          const taskId = `task_${Date.now()}`;
+          ws.send(JSON.stringify({ type: 'task_started', taskId, task: msg.task }));
+
+          runTask(msg.task, {
+            brain: msg.brain || 'auto',
+            useBridge: false,
+            onProgress: (progress) => {
+              try { ws.send(JSON.stringify({ ...progress, taskId })); } catch {}
+            }
+          }).then((summary) => {
+            ws.send(JSON.stringify({ type: 'task_complete', taskId, summary }));
+          }).catch((err) => {
+            ws.send(JSON.stringify({ type: 'task_error', taskId, error: err.message }));
+          });
+          break;
         }
-      } else if (msg.type === 'opencode_command') {
-        if (opencodeServer) {
-          opencodeServer.stdin.write(msg.command + '\n');
+
+        case 'exec': {
+          try {
+            const result = execSync(msg.cmd, { cwd: msg.cwd || ROOT, timeout: msg.timeout || 30000, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+            ws.send(JSON.stringify({ type: 'exec_result', id: msg.id, stdout: result }));
+          } catch (e) {
+            ws.send(JSON.stringify({ type: 'exec_result', id: msg.id, error: e.message, stdout: e.stdout }));
+          }
+          break;
         }
-      } else if (msg.type === 'exec') {
-        try {
-          const result = execSync(msg.cmd, { cwd: ROOT, timeout: msg.timeout || 30000, encoding: 'utf8' });
-          ws.send(JSON.stringify({ type: 'exec_result', id: msg.id, stdout: result }));
-        } catch (e) {
-          ws.send(JSON.stringify({ type: 'exec_result', id: msg.id, error: e.message, stdout: e.stdout }));
+
+        case 'action':
+        case 'execute': {
+          const { execute } = await import('../operator/actions.mjs');
+          const result = await execute(msg.action || msg);
+          ws.send(JSON.stringify({ type: 'action_result', id: msg.id, ...result }));
+          break;
         }
+
+        case 'hermes_command': {
+          if (hermesProcess) hermesProcess.stdin.write(msg.command + '\n');
+          break;
+        }
+
+        case 'opencode_command': {
+          if (opencodeServer) opencodeServer.stdin.write(msg.command + '\n');
+          break;
+        }
+
+        case 'ping': {
+          ws.send(JSON.stringify({ type: 'pong', time: Date.now() }));
+          break;
+        }
+
+        default:
+          ws.send(JSON.stringify({ type: 'error', message: `tipo desconocido: ${msg.type}` }));
       }
     } catch (e) {
       log('Error en mensaje:', e.message);
@@ -160,12 +251,29 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     wsClients = wsClients.filter(w => w !== ws);
+    log(`Cliente desconectado (${clientAddr})`);
   });
+
+  ws.on('error', (e) => log(`Error de WebSocket: ${e.message}`));
+}
+
+httpServer.on('upgrade', (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, (ws) => handleWS(ws, req));
 });
 
-server.listen(BRIDGE_PORT, () => {
-  log(`Bridge corriendo en puerto ${BRIDGE_PORT}`);
-  log(`Hermes WS: ${HERMES_WS_PORT}, OpenCode WS: ${OPENCODE_WS_PORT}`);
+wss.on('connection', (ws, req) => handleWS(ws, req));
+
+const MAIN_PORT = process.env.PORT || process.env.BRIDGE_PORT || 20100;
+httpServer.listen(MAIN_PORT, () => {
+  log(`╔════════════════════════════════════════════════╗`);
+  log(`║   🚀 BRIDGE - SISTEMA AUTÓNOMO UNIVERSAL      ║`);
+  log(`╚════════════════════════════════════════════════╝`);
+  log(`  🌐 HTTP:       http://localhost:${MAIN_PORT}`);
+  log(`  🔌 WebSocket:  ws://localhost:${MAIN_PORT}`);
+  log(`  🧠 Hermes:     puerto ${HERMES_WS_PORT}`);
+  log(`  🤖 OpenCode:   puerto ${OPENCODE_WS_PORT}`);
+  log(`  📡 Clientes:   ${wsClients.length}`);
+  log(`  📁 Proyecto:   ${ROOT}\n`);
   startHermes();
   startOpenCode();
   setTimeout(startPCAgent, 3000);
@@ -173,6 +281,14 @@ server.listen(BRIDGE_PORT, () => {
 
 process.on('SIGINT', () => {
   log('Apagando sistemas...');
+  if (hermesProcess) hermesProcess.kill();
+  if (opencodeServer) opencodeServer.kill();
+  if (opencodeAgent) opencodeAgent.kill();
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  log('SIGTERM recibido, apagando...');
   if (hermesProcess) hermesProcess.kill();
   if (opencodeServer) opencodeServer.kill();
   if (opencodeAgent) opencodeAgent.kill();
