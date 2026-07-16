@@ -1,4 +1,4 @@
-node_modules/
+﻿node_modules/
 .env
 .env.local
 config/.env
@@ -10,3 +10,5 @@ logs/
 .DS_Store
 Thumbs.db
 desktop.ini
+assets/Hello-World.zip
+assets/VIDEO/
