@@ -1,14 +1,13 @@
 FROM node:22-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl \
+    ca-certificates curl git \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g opencode-ai
 
-EXPOSE 21293
+RUN npx playwright install chromium --with-deps 2>/dev/null || true
 
-ENV OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD:-opencode}
-ENV OPENCODE_SERVER_USERNAME=opencode
+EXPOSE 21293
 
 CMD ["opencode", "web", "--hostname", "0.0.0.0", "--port", "21293"]
