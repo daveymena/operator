@@ -6,7 +6,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN npm install -g opencode-ai
 
-RUN npx playwright install chromium --with-deps 2>/dev/null || true
+# Force cache invalidation - rebuild 1
+RUN echo "build-$(date +%s)" > /dev/null
+
+ENV OPENCODE_SERVER_PASSWORD=""
 
 EXPOSE 21293
 
