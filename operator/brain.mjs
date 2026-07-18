@@ -37,8 +37,8 @@ const ALL_PROVIDERS = [
   { id: 'opencode-engine', name: 'OpenCode Engine', url: 'http://localhost:21294/v1', local: true, models: ['deepseek-v4-flash','big-pickle','nemotron','hy3'] },
 ];
 
-const NVIDIA_KEY = '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';
-const NVIDIA_URL = 'https://integrate.api.nvidia.com/v1';
+const NVIDIA_KEY = process.env.NVIDIA_API_KEY || '';
+const NVIDIA_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 
 export class Brain {
   constructor(config = {}) {
