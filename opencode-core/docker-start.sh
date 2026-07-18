@@ -149,9 +149,18 @@ if command -v opencode >/dev/null 2>&1; then
   else
     log "  ⚠  OpenCode web no respondió"
     tail -n 20 /tmp/opencode.log
+    log "  → Iniciando serve.js como fallback..."
+    node "$APP_DIR/serve.js" >/tmp/serve.log 2>&1 &
+    PID=$!
+    PIDS+=("$PID")
+    wait_for_port localhost "$PORT" "serve.js fallback" 30 || true
   fi
 else
-  log "  ⚠  'opencode' no encontrado — instalación fallida"
+  log "  ⚠  'opencode' no encontrado — iniciando serve.js..."
+  node "$APP_DIR/serve.js" >/tmp/serve.log 2>&1 &
+  PID=$!
+  PIDS+=("$PID")
+  wait_for_port localhost "$PORT" "serve.js" 30 || true
 fi
 
 # ============================================================
