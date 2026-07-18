@@ -26,13 +26,11 @@ COPY opencode-core/ .
 
 RUN mkdir -p /app/skills-data /app/skills/claro-agent/src /app/skills/preoperacional-nova/src
 
-RUN npm install -g opencode-ai 2>/dev/null || echo "[docker] opencode-ai no disponible"
+RUN npm install -g opencode-ai --ignore-scripts 2>&1 || echo "[docker] opencode-ai install falló (no crítico)"
 
-RUN npm install -g @anthropic-ai/claude-code 2>/dev/null || true
+RUN npm install -g @anthropic-ai/claude-code --ignore-scripts 2>&1 || true
 
-RUN if command -v opencode >/dev/null 2>&1; then \
-      npx playwright install chromium --with-deps 2>/dev/null || true; \
-    fi
+RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright npx playwright install chromium --with-deps 2>&1 || true
 
 RUN if [ -f /app/skills/claro-agent/requirements.txt ]; then \
       pip3 install -r /app/skills/claro-agent/requirements.txt --break-system-packages 2>/dev/null || \
