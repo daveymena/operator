@@ -1,0 +1,72 @@
+[
+  {
+    "symbol": "EURUSD",
+    "samples": 210,
+    "win_rate": 51.4,
+    "cv_acc": 57.62,
+    "train_acc": 57.14,
+    "test_acc": 59.52,
+    "threshold": 0.65,
+    "f1": 0.783
+  },
+  {
+    "symbol": "GBPUSD",
+    "samples": 286,
+    "win_rate": 54.2,
+    "cv_acc": 51.74,
+    "train_acc": 54.39,
+    "test_acc": 53.45,
+    "threshold": 0.6,
+    "f1": 0.705
+  },
+  {
+    "symbol": "AUDUSD",
+    "samples": 288,
+    "win_rate": 55.2,
+    "cv_acc": 52.06,
+    "train_acc": 89.57,
+    "test_acc": 87.93,
+    "threshold": 0.75,
+    "f1": 0.923
+  },
+  {
+    "symbol": "NZDUSD",
+    "samples": 226,
+    "win_rate": 57.1,
+    "cv_acc": 57.54,
+    "train_acc": 66.67,
+    "test_acc": 67.39,
+    "threshold": 0.5,
+    "f1": 0.769
+  },
+  {
+    "symbol": "USDJPY",
+    "samples": 267,
+    "win_rate": 50.2,
+    "cv_acc": 56.58,
+    "train_acc": 79.81,
+    "test_acc": 83.33,
+    "threshold": 0.5,
+    "f1": 0.842
+  },
+  {
+    "symbol": "USDCAD",
+    "samples": 464,
+    "win_rate": 45.9,
+    "cv_acc": 50.64,
+    "train_acc": 59.57,
+    "test_acc": 56.99,
+    "threshold": 0.3,
+    "f1": 0.636
+  },
+  {
+    "symbol": "USDCHF",
+    "samples": 340,
+    "win_rate": 51.8,
+    "cv_acc": 52.35,
+    "train_acc": 76.47,
+    "test_acc": 76.47,
+    "threshold": 0.6,
+    "f1": 0.833
+  }
+]

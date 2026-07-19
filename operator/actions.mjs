@@ -79,12 +79,25 @@ export async function execute(action) {
       case 'browser_wait':     result = await browserWait(action.params); break;
       case 'open_url':          result = powershell(`Start-Process "${(action.params?.url||'https://google.com').replace(/"/g,'\\"')}"`); break;
       case 'open_file':         result = powershell(`Start-Process "${(action.params?.path||'').replace(/"/g,'\\"')}"`); break;
+      case 'run_script': {
+        const scriptPath = action.params?.path || '';
+        const scriptArgs = action.params?.args || '';
+        const fullPath = path.isAbsolute(scriptPath) ? scriptPath : path.resolve(__dirname, '..', scriptPath);
+        result = powershell(`node "${fullPath}" ${scriptArgs}`);
+        break;
+      }
       case 'read_file':         result = readFile(action.params); break;
       case 'write_file':        result = writeFile(action.params); break;
       case 'list_dir':          result = listDir(action.params); break;
       case 'notify':            result = powershell("Add-Type -AssemblyName System.Windows.Forms; $n=New-Object System.Windows.Forms.NotifyIcon; $n.Icon=[System.Drawing.SystemIcons]::Information; $n.BalloonTipText=\"" + (action.params?.message||'').replace(/"/g,'""') + '"; $n.BalloonTipTitle="' + (action.params?.title||'Operator').replace(/"/g,'""') + '"; $n.Visible=$true; $n.ShowBalloonTip(3000)'); break;
       case 'wait':              await sleep(action.params?.ms || 1000); result = { ok: true, waited: action.params?.ms || 1000 }; break;
       case 'done':              result = { ok: true, done: true, message: action.params?.message || 'completado' }; break;
+      case 'plan':              result = { ok: true, type: 'plan', message: 'plan creado', plan: action.params }; break;
+      case 'verify':            result = { ok: true, type: 'verify', verified: true, message: 'verificación completada' }; break;
+      case 'reflect':           result = { ok: true, type: 'reflect', message: 'reflexión completada' }; break;
+      case 'facebook_create_campaign': result = await facebookCreateCampaign(action.params); break;
+      case 'facebook_list_campaigns':  result = await facebookListCampaigns(action.params); break;
+      case 'facebook_get_insights':    result = await facebookGetInsights(action.params); break;
       default:                  result = { ok: false, error: `acción desconocida: ${action.type}` };
     }
     result.duration = Date.now() - t0;
@@ -242,4 +255,68 @@ async function browserScreenshot(params) {
 async function browserWait(params) {
   await sleep(params?.ms || 2000);
   return { ok: true, waited: params?.ms || 2000 };
+}
+
+// === FACEBOOK ACTIONS ===
+const FB_GRAPH = 'https://graph.facebook.com/v21.0';
+const TOKEN_PATH = path.resolve(__dirname, '..', 'facebook-automation', 'tokens', 'fb_tokens_output.json');
+
+function getFbToken() {
+  try {
+    const data = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf8'));
+    return data.accessToken;
+  } catch {
+    return process.env.FACEBOOK_ACCESS_TOKEN || '';
+  }
+}
+
+async function facebookCreateCampaign(params) {
+  try {
+    const token = getFbToken();
+    if (!token) return { ok: false, error: 'No hay token de Facebook' };
+    const adAccount = params?.adAccount || '1545022093928422';
+    const url = `${FB_GRAPH}/act_${adAccount}/campaigns`;
+    const body = new URLSearchParams({
+      name: params?.name || 'Campaña desde Operator',
+      objective: params?.objective || 'OUTCOME_SALES',
+      status: params?.status || 'PAUSED',
+      special_ad_categories: '[]',
+      daily_budget: Math.round((params?.budget || 5000) * 100),
+      access_token: token,
+    });
+    const res = await fetch(url, { method: 'POST', body });
+    const data = await res.json();
+    if (data.id) return { ok: true, campaignId: data.id, name: params?.name };
+    return { ok: false, error: JSON.stringify(data) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+async function facebookListCampaigns(params) {
+  try {
+    const token = getFbToken();
+    if (!token) return { ok: false, error: 'No hay token de Facebook' };
+    const adAccount = params?.adAccount || '1545022093928422';
+    const url = `${FB_GRAPH}/act_${adAccount}/campaigns?fields=name,status,daily_budget,objective&access_token=${token}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.data) return { ok: true, campaigns: data.data.map(c => ({ id: c.id, name: c.name, status: c.status, budget: c.daily_budget, objective: c.objective })) };
+    return { ok: false, error: JSON.stringify(data) };
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+
+async function facebookGetInsights(params) {
+  try {
+    const token = getFbToken();
+    if (!token) return { ok: false, error: 'No hay token de Facebook' };
+    const campaignId = params?.campaignId || '';
+    const adAccount = params?.adAccount || '1545022093928422';
+    const fields = 'campaign_name,impressions,clicks,spend,ctr,cpc';
+    const url = campaignId
+      ? `${FB_GRAPH}/${campaignId}/insights?fields=${fields}&access_token=${token}`
+      : `${FB_GRAPH}/act_${adAccount}/insights?fields=${fields}&level=campaign&access_token=${token}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.data) return { ok: true, insights: data.data };
+    return { ok: false, error: JSON.stringify(data) };
+  } catch (e) { return { ok: false, error: e.message }; }
 }

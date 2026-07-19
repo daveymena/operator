@@ -1,17 +1,43 @@
 ﻿node_modules/
 .env
 .env.local
+.env.easypanel
 config/.env
+
+# Datos sensibles
+cookies.txt
+page_token.txt
+test.txt
+
+# Perfiles de navegador (grandes + datos privados)
+chrome-profile/
+chrome-debug-profile/
+.fb-profile/
+
+# Directorios de datos de ejecución
 operator/memory/
-operator/knowledge/
 operator/screenshots/
-*.log
+facebook-automation/screenshots/
+facebook-automation/tokens/
+facebook-automation/logs/
 logs/
-.DS_Store
-Thumbs.db
-desktop.ini
-assets/Hello-World.zip
-assets/VIDEO/
+bridge_test*.log
+bridge_test*.txt
+
+# Archivos multimedia (imágenes generadas)
+*.png
+*.jpg
+*.jpeg
+*.svg
+
+# Assets generados
+facebook-automation/ads/campaign-package/
+facebook-automation/assets/
+
+# Documentos ofimáticos
+*.docx
+
+# Temporales / debug
 _debug_*
 _debug.*
 _temp_*
@@ -21,11 +47,13 @@ _test.*
 _study_*
 _task_*
 _guiar_*
-*.png
-*.jpg
-*.jpeg
-facebook-automation/screenshots/
-facebook-automation/tokens/
-facebook-automation/ads/
-facebook-automation/assets/
-.env.easypanel
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+assets/Hello-World.zip
+assets/VIDEO/
+
+# Mantener docs markdown en knowledge, ignorar el resto
+operator/knowledge/*
+!operator/knowledge/*.md

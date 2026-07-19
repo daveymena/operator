@@ -15,17 +15,22 @@ const ACCESS_TOKEN = token.accessToken;
 const PAGE_ID = token.pageId || '1278583508663384';
 const WHATSAPP_NUMBER = '573206541575';
 
-// === CATEGORÍAS actualizadas con presupuestos realistas ===
+// === CATEGORÍAS actualizadas con presupuestos realistas y cobertura total ===
 const CATEGORIES = [
-  { key: 'diseno',       name: 'Diseño Gráfico y Multimedia',   budget: 10000, emoji: '🎨', match: p => p.price === 20000 && ['Diseño','Gráfico','Photoshop','Ilustración','Logotipos','Lettering','Animación','Canva','Filmora','Premiere','Portadas','Cuadros','Infografías','Sublimados'].some(k => p.name.includes(k)) },
-  { key: 'programacion', name: 'Programación y Tecnología',      budget: 10000, emoji: '💻', match: p => p.price === 20000 && ['Programación','Desarrollo','Web','Videojuegos','Animación 3D','Cinema','WordPress','Interfaces','App','Código','Consola','Reparación','Celulares','Play Station','Car Audio','Ensamblaje','Computadora','Planos'].some(k => p.name.includes(k)) },
-  { key: 'marketing',    name: 'Marketing y Negocios',           budget: 8000,  emoji: '📈', match: p => p.price === 20000 && ['Marketing','SEO','Ecommerce','Marca','Negocios','Libros'].some(k => p.name.includes(k)) },
-  { key: 'idiomas',      name: 'Idiomas y Desarrollo Personal',  budget: 6000,  emoji: '🌎', match: p => p.price === 20000 && ['Inglés','Idiomas','Locución','Psicología','Memoria','Preuniversitario','Pilates','Fitness','Fuerza'].some(k => p.name.includes(k)) },
-  { key: 'ofimatica',    name: 'Oficina y Productividad',        budget: 5000,  emoji: '📊', match: p => p.price === 20000 && ['Excel','Office','Instaladores','WordPress'].some(k => p.name.includes(k)) },
-  { key: 'ingenieria',   name: 'Ingeniería y Arquitectura',      budget: 7000,  emoji: '🏗️', match: p => p.price === 20000 && ['Arquitectura','Ingeniería','Revit','Metrados','Planos','Expedientes','Drywall','Proyectos'].some(k => p.name.includes(k)) },
-  { key: 'hacking',      name: 'Ciberseguridad',                 budget: 5000,  emoji: '🛡️', match: p => p.price === 20000 && ['Hacking'].some(k => p.name.includes(k)) },
+  { key: 'diseno',       name: 'Diseño Gráfico y Multimedia',   budget: 10000, emoji: '🎨', match: p => p.price === 20000 && ['Diseño','Gráfico','Photoshop','Ilustración','Logotipos','Lettering','Animación','Canva','Filmora','Premiere','Portadas','Infografías','Sublimados','InDesign','Fotomontaje','Fotografía','Álbumes','Comics','Condorito','Album'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'programacion', name: 'Programación y Tecnología',      budget: 10000, emoji: '💻', match: p => p.price === 20000 && ['Programación','Desarrollo','Web','Videojuegos','Animación 3D','Cinema','WordPress','Interfaces','App','Código','Consola','Reparación','Celulares','Play Station','Car Audio','Ensamblaje','Computadora','DJ','Producción Musical','Musical'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'marketing',    name: 'Marketing y Negocios',           budget: 8000,  emoji: '📈', match: p => p.price === 20000 && ['Marketing','SEO','Ecommerce','Marca','Negocios','Libros'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'idiomas',      name: 'Idiomas, Locución y Desarrollo', budget: 6000,  emoji: '🌎', match: p => p.price === 20000 && ['Inglés','Idiomas','Locución','Narrador','Psicología','Memoria','Preuniversitario','Pilates','Fitness','Fuerza','Terapia','Lenguaje','Autismo','Perro'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'ofimatica',    name: 'Oficina y Productividad',        budget: 5000,  emoji: '📊', match: p => p.price === 20000 && ['Excel','Office','Instaladores','WordPress','Contabilidad'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'ingenieria',   name: 'Ingeniería y Arquitectura',      budget: 7000,  emoji: '🏗️', match: p => p.price === 20000 && ['Arquitectura','Ingeniería','Revit','Metrados','Planos','Expedientes','Drywall','Proyectos','Mecánica','Motos'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'musica',       name: 'Música y Audio',                 budget: 6000,  emoji: '🎵', match: p => p.price === 20000 && ['Guitarra','Piano','Música','Musical','DJ','Producción Musical','Audio'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'hacking',      name: 'Ciberseguridad',                 budget: 5000,  emoji: '🛡️', match: p => p.price === 20000 && ['Hacking'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'gastronomia',  name: 'Cocina y Gastronomía',           budget: 5000,  emoji: '🍳', match: p => p.price === 20000 && ['Gastronomía','Cocina'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'infantil',     name: 'Infantil y Educativo',           budget: 4000,  emoji: '🧸', match: p => p.price === 20000 && ['Kid','Imprimible','Infantil','Educativo'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
+  { key: 'fotografia',   name: 'Fotografía y Video',             budget: 6000,  emoji: '📷', match: p => p.price === 20000 && ['Fotografía','Video','Cámara','Edición Video'].some(k => p.name.toLowerCase().includes(k.toLowerCase())) },
   { key: 'bundle',       name: '🔥 MegaPack Completo',           budget: 15000, emoji: '🚀', match: p => p.name === 'MegaPack Completo' },
   { key: 'piano',        name: '🎹 Curso de Piano',              budget: 5000,  emoji: '🎵', match: p => p.name === 'MegaPack Completo de Piano' },
+  { key: 'general',      name: '📦 Otros Productos',             budget: 5000,  emoji: '📦', match: p => p.price === 20000 },
 ];
 
 function getWhatsAppLink(product) {
@@ -122,9 +127,18 @@ async function main() {
   console.log(`  60.000 COP: ${catalogo.filter(p => p.price === 60000).length}`);
   console.log(`Token: ${(ACCESS_TOKEN||'').substring(0, 20)}...`);
 
+  // Asignar cada producto a la PRIMERA categoría que coincida (prioridad)
+  const assigned = new Set();
   const grouped = CATEGORIES.map(cat => ({
     ...cat,
-    products: catalogo.filter(cat.match)
+    products: catalogo.filter(p => {
+      if (assigned.has(p.id || p.name)) return false;
+      if (cat.match(p)) {
+        assigned.add(p.id || p.name);
+        return true;
+      }
+      return false;
+    })
   }));
 
   const results = { campaigns: [], adsets: [], ads: [], errors: [] };
@@ -135,7 +149,8 @@ async function main() {
       continue;
     }
 
-    console.log(`\n  ${cat.emoji} ${cat.name} (${cat.products.length} productos) — $${cat.budget.toLocaleString()}/día`);
+    const maxAds = cat.key === 'general' ? 1 : Math.min(cat.products.length, 5);
+    console.log(`\n  ${cat.emoji} ${cat.name} (${cat.products.length} prod, ${maxAds} ads) — $${cat.budget.toLocaleString()}/día`);
     console.log(`  ${'─'.repeat(55)}`);
 
     const campaignName = `[VENTAS] ${cat.emoji} ${cat.name} - 20K`;
@@ -158,8 +173,9 @@ async function main() {
     console.log(`  ✅ AdSet: ${adSet.id}`);
     results.adsets.push({ category: cat.name, id: adSet.id });
 
-    for (let i = 0; i < Math.min(cat.products.length, 3); i++) {
+    for (let i = 0; i < maxAds; i++) {
       const product = cat.products[i];
+      if (!product) break;
       const adName = `Ad: ${product.name.substring(0, 35)}`;
       console.log(`    📦 ${i+1}. ${product.name.substring(0, 45)}`);
       const ad = await createAd(adName, adSet.id, product);

@@ -10,11 +10,81 @@
       "timestamp": "2026-07-16T12:45:49.642Z",
       "task": "ve a business.facebook.com/latest/settings/system_users?business_id=4482432028697067 y haz click en ",
       "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:33:49.220Z",
+      "task": "dime el estado del sistema",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:34:35.306Z",
+      "task": "'dime la hora actual'",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:35:17.225Z",
+      "task": "dime la hora actual y el nombre del pc",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:36:36.354Z",
+      "task": "dime el nombre del pc",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:38:50.437Z",
+      "task": "dime el nombre del pc",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:47:04.334Z",
+      "task": "muestra informacion del sistema",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:47:14.082Z",
+      "task": "test rapido - lista los archivos del directorio actual",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T00:54:37.102Z",
+      "task": "test: lista archivos del directorio actual",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T01:03:01.499Z",
+      "task": "test: muestra la fecha y hora actual",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T01:05:38.204Z",
+      "task": "test: muestra la fecha y hora actual",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T01:41:34.539Z",
+      "task": "test: ejecuta Get-Date en powershell",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T01:46:48.641Z",
+      "task": "test: ejecuta Get-Date y muestra el resultado",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T01:58:22.998Z",
+      "task": "abre el navegador chrome y navega a google.com",
+      "status": "started"
+    },
+    {
+      "timestamp": "2026-07-19T02:01:20.697Z",
+      "task": "crea un archivo test.txt con el mensaje Hola Mundo",
+      "status": "started"
     }
   ],
   "created": "2026-07-16T01:50:25.729Z",
   "version": "1.0",
-  "lastUsed": "2026-07-16T12:45:49.642Z",
+  "lastUsed": "2026-07-19T02:01:20.697Z",
   "providers": [
     {
       "models": "kimi-k2.5, gpt-5.4-pro, claude-opus-4-6, gemini-3.1-pro, minimax-m2.7, big-pickle",

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Trading Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a1a;color:#e0e0e0;font-family:'Courier New',monospace;padding:20px}
+.header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;border-bottom:2px solid #00ff88;padding-bottom:15px}
+h1{color:#00ff88;font-size:24px}
+.status{color:#888}
+.status.online{color:#00ff88}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:15px;margin-bottom:30px}
+.card{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:20px;text-align:center}
+.card .value{font-size:28px;font-weight:bold;margin:5px 0}
+.card .label{color:#666;font-size:11px;text-transform:uppercase}
+.card.up{border-color:#00ff88}.card.up .value{color:#00ff88}
+.card.down{border-color:#ff4466}.card.down .value{color:#ff4466}
+.card.neutral{border-color:#ffd700}.card.neutral .value{color:#ffd700}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:30px}
+.chart-box{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:20px}
+.chart-box.full{grid-column:1/-1}
+.chart-box h3{color:#ffd700;font-size:14px;margin-bottom:15px}
+canvas{width:100%!important;height:300px!important}
+.trades-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.trades-table th{background:#1a1a3a;color:#ffd700;padding:8px 12px;text-align:left;border-bottom:2px solid #2a2a4a}
+.trades-table td{padding:6px 12px;border-bottom:1px solid #1a1a2a}
+.trades-table .win{color:#00ff88}.trades-table .loss{color:#ff4466}
+.controls{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.controls select,.controls button{background:#1a1a3a;color:#e0e0e0;border:1px solid #2a2a4a;padding:8px 16px;border-radius:5px;font-family:inherit;cursor:pointer}
+.controls button:hover{background:#2a2a5a;border-color:#00ff88}
+.controls button.active{background:#00ff88;color:#0a0a1a;border-color:#00ff88}
+.mode-badge{padding:2px 8px;border-radius:3px;font-size:10px}
+.mode-badge.paper{background:#ffd700;color:#0a0a1a}
+.mode-badge.live{background:#00ff88;color:#0a0a1a}
+#signals-panel{background:#12122a;border:1px solid #2a2a4a;border-radius:10px;padding:20px;margin-bottom:30px}
+.signal{display:flex;justify-content:space-between;align-items:center;padding:10px;margin:5px 0;border-radius:5px;border-left:4px solid}
+.signal.buy{border-color:#00ff88;background:#0a1a0a}
+.signal.sell{border-color:#ff4466;background:#1a0a0a}
+.signal .type{font-weight:bold;font-size:16px}
+.signal .price{font-size:14px;color:#aaa}
+.signal .conf{font-size:12px;padding:2px 8px;border-radius:3px}
+.signal .conf.high{background:#00ff88;color:#0a0a1a}
+.signal .conf.med{background:#ffd700;color:#0a0a1a}
+.signal .conf.low{background:#ff4466;color:#fff}
+</style></head>
+<body>
+<div class="header">
+  <h1>TRADING DASHBOARD</h1>
+  <div><span class="status" id="status-indicator">●</span> <span id="status-text">CONNECTING...</span></div>
+</div>
+
+<div class="controls">
+  <select id="symbol-select">
+    <option value="EURUSD">EURUSD</option>
+    <option value="GBPUSD">GBPUSD</option>
+    <option value="AUDUSD">AUDUSD</option>
+    <option value="USDJPY">USDJPY</option>
+    <option value="USDCAD">USDCAD</option>
+  </select>
+  <button id="btn-run-backtest" class="active">▶ Run Backtest</button>
+  <button id="btn-optimize">⚙ Optimize</button>
+  <button id="btn-signals">📡 Get Signals</button>
+  <span id="mode-display"><span class="mode-badge paper">PAPER</span></span>
+</div>
+
+<div class="grid" id="metrics-grid"></div>
+
+<div id="signals-panel" style="display:none">
+  <h3>📡 SIGNALS</h3>
+  <div id="signals-list"></div>
+</div>
+
+<div class="chart-row">
+  <div class="chart-box full"><h3>📈 Equity Curve</h3><canvas id="equity-chart"></canvas></div>
+</div>
+<div class="chart-row">
+  <div class="chart-box full"><h3>🕯️ Price & Trades</h3><canvas id="price-chart"></canvas></div>
+</div>
+<div class="chart-row">
+  <div class="chart-box"><h3>📊 Win Rate por Setup</h3><canvas id="setup-wr-chart"></canvas></div>
+  <div class="chart-box"><h3>💰 P&L por Setup</h3><canvas id="setup-pnl-chart"></canvas></div>
+</div>
+
+<div class="chart-box full">
+  <h3>📋 Recent Trades</h3>
+  <table class="trades-table" id="trades-table">
+    <thead><tr><th>#</th><th>Setup</th><th>Type</th><th>Entry</th><th>Exit</th><th>P&L</th><th>R</th><th>Reason</th><th>Conf</th></tr></thead>
+    <tbody id="trades-body"></tbody>
+  </table>
+</div>
+
+<script>
+const API = 'http://localhost:3000';
+let equityChart, priceChart, setupWrChart, setupPnlChart;
+let tradeData = [];
+let currentSymbol = 'EURUSD';
+
+async function fetchAPI(endpoint) {
+  try {
+    const r = await fetch(API + endpoint);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function updateStatus() {
+  const h = await fetchAPI('/api/health');
+  const el = document.getElementById('status-indicator');
+  const txt = document.getElementById('status-text');
+  if (h) {
+    el.className = 'status online';
+    txt.textContent = `ONLINE | Bot: ${h.bot?.isRunning ? 'RUNNING' : 'STOPPED'} | Uptime: ${Math.floor(h.uptime || 0)}s`;
+  } else {
+    el.className = 'status';
+    txt.textContent = 'OFFLINE';
+  }
+}
+
+function renderMetrics(data) {
+  const grid = document.getElementById('metrics-grid');
+  const items = [
+    {label:'Final Capital',value:'$'+fmt(data.final_capital||0),cls:data.total_return>0?'up':'down'},
+    {label:'Total Return',value:(data.total_return||0).toFixed(2)+'%',cls:data.total_return>0?'up':'down'},
+    {label:'Profit Factor',value:(data.profit_factor||0).toFixed(2),cls:data.profit_factor>=1.2?'up':'neutral'},
+    {label:'Win Rate',value:(data.win_rate||0).toFixed(1)+'%',cls:(data.win_rate||0)>=45?'up':'neutral'},
+    {label:'Total Trades',value:data.total_trades||0,cls:'neutral'},
+    {label:'Max Drawdown',value:(data.max_drawdown||0).toFixed(1)+'%',cls:'down'},
+    {label:'Avg R Multiple',value:(data.avg_r||0).toFixed(2),cls:data.avg_r>0?'up':'down'},
+    {label:'Avg Confidence',value:(data.avg_confidence||0).toFixed(1)+'%',cls:'neutral'},
+  ];
+  grid.innerHTML = items.map(i => `
+    <div class="card ${i.cls}">
+      <div class="label">${i.label}</div>
+      <div class="value">${i.value}</div>
+    </div>`).join('');
+}
+
+function fmt(n) { return Math.abs(n).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+function setupEquityChart(trades) {
+  if (!equityChart) {
+    equityChart = new Chart(document.getElementById('equity-chart'), {
+      type:'line', data:{labels:[],datasets:[
+        {label:'Equity',data:[],borderColor:'#00ff88',backgroundColor:'rgba(0,255,136,0.1)',fill:true,tension:0.1,pointRadius:0},
+        {label:'Drawdown',data:[],borderColor:'#ff4466',backgroundColor:'rgba(255,68,102,0.1)',fill:true,tension:0.1,pointRadius:0,yAxisID:'y1'},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        scales:{x:{ticks:{color:'#666'},grid:{color:'#1a1a2a'}},
+                y:{ticks:{color:'#666'},grid:{color:'#1a1a2a'}},
+                y1:{position:'right',ticks:{color:'#ff4466'},grid:{display:false}}},
+        plugins:{legend:{labels:{color:'#aaa'}}}
+      }
+    });
+  }
+  const labels = trades.map((_,i)=>i);
+  const equity = [100000];
+  trades.forEach(t => equity.push(equity[equity.length-1] + t.net_pnl));
+  const peak = []; let m = 0;
+  equity.forEach(e => { m = Math.max(m,e); peak.push(m); });
+  const dd = equity.map((e,i) => (peak[i]-e)/peak[i]*100);
+
+  equityChart.data.labels = labels;
+  equityChart.data.datasets[0].data = equity;
+  equityChart.data.datasets[1].data = dd;
+  equityChart.update();
+}
+
+function setupPriceChart(df, trades) {
+  if (!priceChart) {
+    priceChart = new Chart(document.getElementById('price-chart'), {
+      type:'candlestick', data:{datasets:[]},
+      options:{responsive:true,maintainAspectRatio:false}
+    });
+    Chart.register(ChartCandlestick);
+  }
+}
+
+function renderTrades(trades) {
+  const tbody = document.getElementById('trades-body');
+  const html = trades.slice(-50).reverse().map((t,i) => `
+    <tr>
+      <td>${trades.length-i}</td>
+      <td>${t.setup||'N/A'}</td>
+      <td class="${t.type}">${t.type}</td>
+      <td>${t.entry?.toFixed(5)}</td>
+      <td>${t.exit?.toFixed(5)}</td>
+      <td class="${t.net_pnl>0?'win':'loss'}">${t.net_pnl>0?'+':''}$${fmt(t.net_pnl)}</td>
+      <td>${t.r_multiple?.toFixed(2)||'-'}</td>
+      <td>${t.exit_reason||''}</td>
+      <td>${t.confidence||0}%</td>
+    </tr>`).join('');
+  tbody.innerHTML = html || '<tr><td colspan="9" style="text-align:center;color:#666">No trades</td></tr>';
+}
+
+function renderSetupCharts(data) {
+  const ss = data.setup_stats || {};
+  const setups = Object.keys(ss);
+  const wrs = setups.map(s=>ss[s].win_rate);
+  const pnls = setups.map(s=>ss[s].pnl);
+  const colors = pnls.map(p => p>=0 ? '#00ff88' : '#ff4466');
+
+  if (setupWrChart) { setupWrChart.destroy(); }
+  setupWrChart = new Chart(document.getElementById('setup-wr-chart'), {
+    type:'bar', data:{labels:setups,datasets:[{label:'Win Rate',data:wrs,backgroundColor:'#00ff88',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{max:100,ticks:{color:'#666'},grid:{color:'#1a1a2a'}},
+              x:{ticks:{color:'#aaa'},grid:{display:false}}}}
+  });
+
+  if (setupPnlChart) { setupPnlChart.destroy(); }
+  setupPnlChart = new Chart(document.getElementById('setup-pnl-chart'), {
+    type:'bar', data:{labels:setups,datasets:[{label:'P&L',data:pnls,backgroundColor:colors,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{y:{ticks:{color:'#666'},grid:{color:'#1a1a2a'}},
+              x:{ticks:{color:'#aaa'},grid:{display:false}}}}
+  });
+}
+
+async function runBacktest() {
+  const symbol = document.getElementById('symbol-select').value;
+  currentSymbol = symbol;
+  const btn = document.getElementById('btn-run-backtest');
+  btn.textContent = '⏳ Running...';
+  btn.disabled = true;
+
+  const result = await fetchAPI(`/api/backtest/run?symbol=${symbol}`);
+  if (result) {
+    renderMetrics(result);
+    renderTrades(result.trades || []);
+    setupEquityChart(result.trades || []);
+    renderSetupCharts(result);
+    document.getElementById('signals-panel').style.display = 'none';
+  }
+  btn.textContent = '▶ Run Backtest';
+  btn.disabled = false;
+}
+
+async function getSignals() {
+  const symbol = document.getElementById('symbol-select').value;
+  const result = await fetchAPI(`/api/signals?symbol=${symbol}`);
+  const panel = document.getElementById('signals-panel');
+  const list = document.getElementById('signals-list');
+
+  if (result?.latest_signals?.length) {
+    panel.style.display = 'block';
+    list.innerHTML = result.latest_signals.map(s => `
+      <div class="signal ${s.type}">
+        <div><span class="type">${s.type.toUpperCase()}</span> @ <span class="price">${s.entry?.toFixed(5)}</span></div>
+        <div><span class="conf ${s.confidence>=70?'high':s.confidence>=50?'med':'low'}">${s.confidence}%</span></div>
+      </div>`).join('');
+  } else {
+    panel.style.display = 'block';
+    list.innerHTML = '<div style="color:#666;text-align:center;padding:20px">No signals available</div>';
+  }
+}
+
+document.getElementById('symbol-select').addEventListener('change', () => {
+  document.getElementById('signals-panel').style.display = 'none';
+});
+
+document.getElementById('btn-run-backtest').addEventListener('click', runBacktest);
+document.getElementById('btn-signals').addEventListener('click', getSignals);
+document.getElementById('btn-optimize').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-optimize');
+  btn.textContent = '⏳ Optimizing...';
+  btn.disabled = true;
+  const symbol = document.getElementById('symbol-select').value;
+  const result = await fetchAPI(`/api/optimization/run?symbol=${symbol}&generations=8`);
+  if (result?.best_params) {
+    alert('Optimization complete!\nBest params:\n' + JSON.stringify(result.best_params, null, 2));
+  }
+  btn.textContent = '⚙ Optimize';
+  btn.disabled = false;
+});
+
+setInterval(updateStatus, 5000);
+updateStatus();
+</script>
+</body></html>

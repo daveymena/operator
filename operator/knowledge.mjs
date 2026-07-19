@@ -100,7 +100,10 @@ export class Knowledge {
 ⏱️ CONTROL: wait(ms)
 🖼️ VISIÓN: screenshot + análisis de imagen con IA
 📚 CONOCIMIENTO: load_docs(path) - Carga documentación de cualquier app
-🧠 MEMORIA: Recuerda tareas anteriores y contexto`;
+🧠 MEMORIA: Recuerda tareas anteriores y contexto
+📊 FACEBOOK: facebook_create_campaign(name, objective, budget, status) - Crea campaña en Facebook Ads
+📊 FACEBOOK: facebook_list_campaigns(adAccount) - Lista campañas existentes
+📊 FACEBOOK: facebook_get_insights(campaignId) - Obtiene métricas de campañas`;
   }
 
   getSystemContext() {

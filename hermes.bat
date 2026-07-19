@@ -12,6 +12,15 @@ echo   ║         Control Total del PC desde Hermes            ║
 echo   ╚═══════════════════════════════════════════════════════╝
 echo.
 
+:: Renovar token de Copilot automaticamente
+echo [0/3] Renovando token de Copilot...
+powershell -ExecutionPolicy Bypass -Command "& '%~dp0scripts\copilot-auto.ps1'" > nul 2>&1
+if %errorlevel% equ 0 (
+    echo [✓] Token Copilot renovado
+) else (
+    echo [⚠] No se pudo renovar token Copilot
+)
+
 :: Matar bridges previos
 taskkill /f /im node.exe /fi "WINDOWTITLE eq HERMES*" > nul 2>&1
 taskkill /f /im node.exe /fi "WINDOWTITLE eq BRIDGE*" > nul 2>&1

@@ -62,10 +62,24 @@ export async function runTask(task, options = {}) {
   }
 
   let state = { description: 'Iniciando...', url: '', cursor: '', windows: '' };
+  let lastState = { description: '', cursor: '' };
+
+  // FASE 1: PLANIFICACIÓN
+  onProgress({ type: 'phase', phase: 'planning', message: 'Creando plan detallado...' });
+  const plan = await brain.createPlan(task, knowledgeLoaded ? knowledge.getSummary() : knowledge.getToolList());
+  if (plan && plan.goal) {
+    onProgress({ type: 'plan', goal: plan.goal, steps: plan.steps, total: plan.total_steps });
+    memory.data.plan = plan;
+  } else {
+    onProgress({ type: 'plan', goal: task, steps: [{ step: 1, goal: task }], total: 1 });
+  }
+
+  onProgress({ type: 'phase', phase: 'executing', message: 'Ejecutando plan...' });
 
   for (let step = 1; step <= MAX_STEPS; step++) {
     onProgress({ type: 'step', step, maxSteps: MAX_STEPS });
 
+    // Capturar estado actual
     const ss = await execAction({ type: 'screenshot', params: { quality: 50, scale: 0.75 } });
     if (ss.ok) {
       state.description = await brain.describeImage(ss.base64);
@@ -74,6 +88,21 @@ export async function runTask(task, options = {}) {
 
     const cursor = await execAction({ type: 'get_cursor', params: {} });
     if (cursor.ok) state.cursor = cursor.output;
+
+    // Detectar si estamos estancados (mismo estado que antes)
+    const stuck = lastState.description === state.description && lastState.cursor === state.cursor && step > 2;
+    if (stuck) {
+      brain.consecutiveFailures++;
+      onProgress({ type: 'warning', message: `Estancado (intento ${brain.consecutiveFailures}) - cambiando estrategia` });
+      if (brain.consecutiveFailures >= 3) {
+        onProgress({ type: 'error', message: 'Demasiados intentos sin progreso, abortando' });
+        memory.markFailed('stuck_' + brain.consecutiveFailures + '_consecutive');
+        break;
+      }
+    } else {
+      brain.consecutiveFailures = 0;
+    }
+    lastState = { description: state.description, cursor: state.cursor };
 
     const brainInput = knowledgeLoaded ? knowledge.getSummary() : knowledge.getToolList() + '\n\n' + knowledge.getSummary(5000);
     const decision = await brain.think(task, state, brainInput, memory.getHistory());
@@ -90,12 +119,58 @@ export async function runTask(task, options = {}) {
       break;
     }
 
-    onProgress({ type: 'decision', thought: decision.thought, action: decision.action, backend: decision._backend });
+    // Validar que la acción tiene sentido
+    if (!decision.action || !decision.action.type) {
+      onProgress({ type: 'warning', message: 'Decisión sin acción válida, reintentando...' });
+      memory.addStep(decision.thought || 'sin razonamiento', { type: 'none', params: {} }, { ok: false, error: 'acción inválida' }, state.description);
+      continue;
+    }
+
+    // No permitir acciones sin razonamiento
+    if (!decision.thought || decision.thought.length < 10) {
+      onProgress({ type: 'warning', message: 'Razonamiento insuficiente, forzando reflexión...' });
+      decision.thought = 'Ejecutando: ' + decision.action.type + ' - confirma que esta acción es necesaria para el objetivo';
+    }
+
+    onProgress({ type: 'decision', thought: decision.thought, action: decision.action, backend: decision._backend, planStep: decision._planStep, goal: decision._goal });
     const result = await execAction(decision.action);
     onProgress({ type: 'result', ok: result.ok, error: result.error, duration: result.duration });
     memory.addStep(decision.thought, decision.action, result, state.description);
 
-    const delays = { mouse_click: 1500, keyboard_type: 500, open_url: 2000, powershell: 2000 };
+    // Verificar resultado
+    if (result.ok) {
+      const verifyResult = await brain.verify(decision.action, result, lastState.description, state.description);
+      if (verifyResult && verifyResult.verified) {
+        onProgress({ type: 'verified', message: verifyResult.reason });
+        if (verifyResult.advance_plan) {
+          const planAdvance = brain.advancePlan();
+          if (planAdvance.done) {
+            onProgress({ type: 'plan_progress', message: 'Plan completado — tarea finalizada' });
+            memory.markDone('plan completado exitosamente');
+            onProgress({ type: 'done', reason: 'Plan completado exitosamente', backend: decision._backend });
+            break;
+          } else {
+            onProgress({ type: 'plan_progress', message: `Avanzando al paso ${planAdvance.currentStep}/${planAdvance.totalSteps}` });
+          }
+        }
+      } else {
+        onProgress({ type: 'warning', message: `Acción no verificada: ${verifyResult?.reason || 'desconocido'}` });
+        if (verifyResult?.action_needed === 'retry' && brain.consecutiveFailures < 2) {
+          onProgress({ type: 'retry', message: `Reintentando con enfoque diferente: ${verifyResult.reason}` });
+          brain.consecutiveFailures++;
+        }
+      }
+    } else {
+      brain.failedActions++;
+      onProgress({ type: 'failure', message: `Acción falló: ${result.error}` });
+      if (brain.failedActions >= 5) {
+        onProgress({ type: 'error', message: 'Demasiados fallos consecutivos' });
+        memory.markFailed('too_many_failures_' + brain.failedActions);
+        break;
+      }
+    }
+
+    const delays = { mouse_click: 1500, keyboard_type: 500, open_url: 2000, powershell: 2000, browser_goto: 3000, browser_click: 1500, browser_type: 1000 };
     await sleep(delays[decision.action?.type] || 800);
   }
 
@@ -166,10 +241,21 @@ async function main() {
   options.onProgress = (msg) => {
     switch (msg.type) {
       case 'start': log(`\n╔════════════════════════════════════════════════════╗\n║     🤖 OPERATOR - SISTEMA AUTÓNOMO TOTAL          ║\n╚════════════════════════════════════════════════════╝\n\n  🎯 ${msg.task}\n  🧠 Brain: ${msg.brain}\n  🔄 Pasos máx: ${msg.maxSteps}\n  🆔 ID: ${msg.taskId}\n`); break;
+      case 'phase': log(`\n  📋 FASE: ${msg.phase} — ${msg.message}\n`); break;
+      case 'plan': log(`  📋 PLAN: ${msg.goal}\n     Pasos: ${msg.total}\n     ${(msg.steps||[]).map(s => `\n       ${s.step}. ${s.goal}`).join('')}\n`); break;
+      case 'plan_progress': log(`  📍 ${msg.message}`); break;
       case 'step': log(`  ── Paso ${msg.step}/${msg.maxSteps} ──`); break;
       case 'screenshot': log(`  📸 ${msg.file}`); break;
-      case 'decision': log(`  🤔 ${msg.thought}\n  🎬 ${msg.action?.type} ${JSON.stringify(msg.action?.params || {})}`); break;
+      case 'decision': {
+        const goal = msg.goal ? ` [${msg.goal.substring(0, 60)}]` : '';
+        log(`  🤔 ${msg.thought}\n  🎬 ${msg.action?.type} ${JSON.stringify(msg.action?.params || {})}${goal}`);
+        break;
+      }
       case 'result': log(`  📊 ${msg.ok ? '✅' : '❌'} (${msg.duration || 0}ms)${!msg.ok && msg.error ? `\n     ⚠️ ${msg.error}` : ''}`); break;
+      case 'verified': log(`  ✅ Verificado: ${msg.message}`); break;
+      case 'warning': log(`  ⚠️ ${msg.message}`); break;
+      case 'retry': log(`  🔄 ${msg.message}`); break;
+      case 'failure': log(`  ❌ ${msg.message}`); break;
       case 'done': log(`\n  ✅ ${msg.reason}`); break;
       case 'error': log(`  ❌ ${msg.message}`); break;
       case 'summary': log(`\n${'═'.repeat(55)}\n  📊 ${msg.status === 'completed' ? '✅' : '❌'} ${msg.task}\n     Pasos: ${msg.steps} | ✅ ${msg.successful} | ❌ ${msg.failed}\n     Tiempo: ${msg.duration}\n${'═'.repeat(55)}\n`); break;

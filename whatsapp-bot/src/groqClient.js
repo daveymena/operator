@@ -1,7 +1,11 @@
 import axios from "axios";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 import { promptBase } from "./promptBase.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '..', '..', 'config', '.env') });
 dotenv.config();
 
 export async function responderGroq(pregunta) {
@@ -11,7 +15,7 @@ export async function responderGroq(pregunta) {
     const response = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
-        model: "mixtral-8x7b-32768",
+        model: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
         messages: [
           { role: "system", content: "Eres un agente de ventas profesional y amable." },
           { role: "user", content: promptFinal },

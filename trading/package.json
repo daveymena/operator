@@ -1,0 +1,12 @@
+{
+  "name": "trading-system",
+  "version": "1.0.0",
+  "description": "Sistema de Trading - EmaWilliams + AI Genetic Optimizer + Neural Filter",
+  "scripts": {
+    "start": "node api/server.js",
+    "api": "node api/server.js",
+    "download-data": "python scripts/download_data.py",
+    "optimize": "python scripts/run_optimization.py",
+    "backtest": "python scripts/run_backtest.py"
+  }
+}
