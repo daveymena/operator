@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "operator": {
+      "command": "node",
+      "args": ["./operator/mcp-server.mjs"],
+      "env": {}
+    }
+  }
+}
