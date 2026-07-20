@@ -1,7 +1,8 @@
-import json, os, socket, threading, time, subprocess, base64 as b64lib
+import json, os, socket, threading, time, subprocess, base64 as b64lib, requests
 
 HERMES_BRIDGE_PORT = int(os.environ.get('HERMES_BRIDGE_PORT', '20100'))
 OPENCODE_CONTROL = os.environ.get('OPENCODE_CONTROL', '0') == '1'
+OPERATOR_API_URL = os.environ.get('OPERATOR_API_URL', 'http://localhost:3000')
 
 _socket = None
 _lock = threading.Lock()
@@ -78,6 +79,116 @@ def opencode_list_windows():
 def opencode_list_apps():
     """Lista las aplicaciones instaladas usando OpenCode."""
     return json.dumps(_opencode_cmd({'type': 'list_apps'}))
+
+# ═══════════════════════════════════════════════════════════════════
+#  NUEVAS HERRAMIENTAS (Operator Pro v3.0)
+# ═══════════════════════════════════════════════════════════════════
+
+def _api_call(endpoint, method='GET', data=None):
+    """Llama a la API REST de Operator Pro."""
+    try:
+        url = f"{OPERATOR_API_URL}/api/{endpoint}"
+        if method == 'GET':
+            r = requests.get(url, timeout=30)
+        elif method == 'POST':
+            r = requests.post(url, json=data, timeout=60)
+        return r.json()
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+# ─── Browser ───
+def operator_browser_navigate(url):
+    """Navega a una URL en el navegador."""
+    return json.dumps(_api_call('browser/navigate', 'POST', {'url': url}))
+
+def operator_browser_click(selector=None, text=None, x=None, y=None):
+    """Hace click en un elemento del navegador."""
+    return json.dumps(_api_call('browser/click', 'POST', {
+        'selector': selector, 'text': text, 'x': x, 'y': y
+    }))
+
+def operator_browser_type(text, selector=None):
+    """Escribe texto en el navegador."""
+    return json.dumps(_api_call('browser/type', 'POST', {'text': text, 'selector': selector}))
+
+def operator_browser_screenshot():
+    """Toma screenshot del navegador."""
+    return json.dumps(_api_call('browser/screenshot', 'POST', {}))
+
+def operator_browser_content():
+    """Obtiene el contenido de la página actual."""
+    return json.dumps(_api_call('browser/content', 'GET'))
+
+# ─── Terminal ───
+def operator_terminal(command, cwd=None, timeout=30000):
+    """Ejecuta un comando en la terminal."""
+    return json.dumps(_api_call('terminal/exec', 'POST', {
+        'command': command, 'cwd': cwd, 'timeout': timeout
+    }))
+
+# ─── Facebook Ads ───
+def operator_fb_create_campaign(name, objective='OUTCOME_TRAFFIC', budget=5000, via_api=True):
+    """Crea una campaña en Facebook Ads."""
+    return json.dumps(_api_call('facebook/campaign', 'POST', {
+        'name': name, 'objective': objective, 'budget': budget, 'via_api': via_api
+    }))
+
+def operator_fb_analyze_metrics(date_preset='last_7d'):
+    """Analiza métricas de Facebook Ads."""
+    return json.dumps(_api_call('facebook/metrics', 'POST', {'date_preset': date_preset}))
+
+def operator_fb_segment_audience(location='Colombia', age_min=18, age_max=65, interests=None):
+    """Segmenta audiencia para Facebook Ads."""
+    return json.dumps(_api_call('facebook/audience', 'POST', {
+        'location': location, 'age_min': age_min, 'age_max': age_max, 'interests': interests or []
+    }))
+
+# ─── Auto-Optimizer ───
+def operator_start_optimizer(interval_minutes=30):
+    """Inicia el auto-optimizador de campañas."""
+    return json.dumps(_api_call('optimizer/start', 'POST', {'interval': interval_minutes}))
+
+def operator_stop_optimizer():
+    """Detiene el auto-optimizador."""
+    return json.dumps(_api_call('optimizer/stop', 'POST', {}))
+
+# ─── Alerts ───
+def operator_get_alerts():
+    """Obtiene alertas activas."""
+    return json.dumps(_api_call('alerts/active', 'GET'))
+
+# ─── Tasks ───
+def operator_run_task(task_description, max_steps=50):
+    """Ejecuta una tarea autónoma compleja."""
+    return json.dumps(_api_call('tasks/run', 'POST', {
+        'task': task_description, 'max_steps': max_steps
+    }))
+
+def operator_get_active_tasks():
+    """Lista tareas activas."""
+    return json.dumps(_api_call('tasks/active', 'GET'))
+
+# ─── Files ───
+def operator_read_file(path):
+    """Lee un archivo."""
+    return json.dumps(_api_call('files/read', 'POST', {'path': path}))
+
+def operator_write_file(path, content):
+    """Escribe un archivo."""
+    return json.dumps(_api_call('files/write', 'POST', {'path': path, 'content': content}))
+
+def operator_list_dir(path='.'):
+    """Lista directorio."""
+    return json.dumps(_api_call('files/list', 'POST', {'path': path}))
+
+# ─── System ───
+def operator_system_info():
+    """Obtiene información del sistema."""
+    return json.dumps(_api_call('system/info', 'GET'))
+
+def operator_list_processes():
+    """Lista procesos del sistema."""
+    return json.dumps(_api_call('system/processes', 'GET'))
 
 def opencode_execute_powershell(script):
     """Ejecuta un script de PowerShell usando OpenCode."""

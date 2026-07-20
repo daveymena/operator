@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "operator": {
+      "command": "node",
+      "args": ["./operator/mcp-server.mjs"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  },
+  "tools": {
+    "description": "Operator Pro - Autonomous AI Agent Platform",
+    "version": "3.0.0",
+    "capabilities": [
+      "browser_automation",
+      "terminal_execution",
+      "facebook_ads",
+      "auto_optimization",
+      "real_time_alerts",
+      "computer_use",
+      "file_management",
+      "system_monitoring"
+    ]
+  }
+}
