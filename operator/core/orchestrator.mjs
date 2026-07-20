@@ -16,9 +16,9 @@ import { fileURLToPath } from 'url';
 import { EventEmitter } from 'events';
 import { v4 as uuid } from 'uuid';
 
-import { Brain } from './brain.mjs';
-import { Memory } from './memory.mjs';
-import { Knowledge } from './knowledge.mjs';
+import { Brain } from '../brain.mjs';
+import { Memory } from '../memory.mjs';
+import { Knowledge } from '../knowledge.mjs';
 import { getBrowser } from '../engines/browser.mjs';
 import { getTerminal } from '../engines/terminal.mjs';
 import { getScreen } from '../engines/screen.mjs';

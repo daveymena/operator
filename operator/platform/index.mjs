@@ -424,7 +424,7 @@ class DarwinAdapter extends PlatformAdapter {
   }
 
   async getCursor() {
-    const r = await this.exec("osascript -e 'tell application \\"System Events\\" to get position of the mouse' 2>/dev/null || python3 -c 'import Quartz; p=Quartz.CGEventGetLocation(Quartz.CGEventCreate(None)); print(f\"{int(p.x)},{int(p.y)}\")' 2>/dev/null");
+    const r = await this.exec(`osascript -e 'tell application "System Events" to get position of the mouse' 2>/dev/null || python3 -c 'import Quartz; p=Quartz.CGEventGetLocation(Quartz.CGEventCreate(None)); print(f"{int(p.x)},{int(p.y)}")' 2>/dev/null`);
     if (r.ok) {
       const match = r.stdout.match(/(\d+).?(\d+)/);
       if (match) return { ok: true, x: parseInt(match[1]), y: parseInt(match[2]) };
@@ -433,7 +433,7 @@ class DarwinAdapter extends PlatformAdapter {
   }
 
   async listWindows() {
-    const r = await this.exec("osascript -e 'tell application \\"System Events\\" to get name of every application process whose visible is true'");
+    const r = await this.exec(`osascript -e 'tell application "System Events" to get name of every application process whose visible is true'`);
     if (r.ok) {
       const windows = r.stdout.split(',').map((t, i) => ({ id: i, title: t.trim(), name: t.trim() }));
       return { ok: true, windows };
@@ -463,7 +463,9 @@ class DarwinAdapter extends PlatformAdapter {
   }
 
   async notify(title, message) {
-    return this.exec(`osascript -e 'display notification "${message.replace(/"/g, '\\"')}" with title "${title.replace(/"/g, '\\"')}"'`);
+    const safeMsg = message.replace(/'/g, "\\'");
+    const safeTtl = title.replace(/'/g, "\\'");
+    return this.exec(`osascript -e 'display notification "${safeMsg}" with title "${safeTtl}"'`);
   }
 }
 

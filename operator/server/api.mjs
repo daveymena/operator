@@ -14,7 +14,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import { createServer } from 'http';
+import { createServer as createHttpServer } from 'http';
 import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import path from 'path';
@@ -69,7 +69,7 @@ export function createServer(config = {}) {
 
   // ─── WebSocket ────────────────────────────────────────────────────────────
 
-  const httpServer = createServer(app);
+  const httpServer = createHttpServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const wsClients = new Map();
 
