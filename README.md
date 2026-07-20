@@ -1,122 +1,211 @@
-# 🤖 Operator Pro v3.0
+# 🤖 Operator Pro v4.0
 
 **Autonomous AI Agent — Web, Desktop & Server**
 
-Operator Pro is a professional-grade autonomous agent that works fluently across the web, your desktop, and any server. It combines multi-model AI reasoning with real browser automation, terminal control, and screen understanding to autonomously complete complex tasks.
+> 🔥 **v4.0**: AI Gateway con OpenCode Zen + GMI Cloud, Auth, Watch Mode, Task Scheduler, Deep Research, y Dashboard completo.
 
-## ✨ Features
+---
 
-### 🌐 Web Automation
-- **Smart Browser Engine** — Playwright/Puppeteer with auto-connection
-- Find elements by text, selector, role, or aria-label
-- Form auto-fill, cookie management, multi-tab control
-- Network interception, file downloads, PDF generation
+## ✨ What's New in v4.0
 
-### 🖥️ Desktop Control
-- **Cross-Platform** — Works on Windows, Linux, and macOS
-- Screenshot capture with OCR text recognition
-- Mouse and keyboard simulation
-- Window management, clipboard operations
-
-### ⚡ Terminal & Server
-- Persistent shell sessions with state
-- Run scripts (Node.js, Python, Bash, PowerShell)
-- Git operations, npm management
-- System monitoring and process management
-
-### 🧠 AI Brain
-- **20+ AI providers** — Groq, OpenAI, Copilot, NVIDIA, Anthropic, Google, DeepSeek, and more
-- Automatic failover between backends
-- Visual understanding via multimodal models
-- Task planning, verification, and error recovery
-
-### 🔌 Extensible
-- **Plugin system** — Add custom actions
-- Built-in web scraper and system monitor plugins
-- REST API + WebSocket for external integration
-- Web dashboard for monitoring
+| Feature | Description |
+|---------|-------------|
+| 🧠 **AI Gateway** | Unified multi-provider gateway with smart routing & failover. OpenCode Zen (primary) + GMI Cloud (secondary) + 21 more providers |
+| 🔐 **Auth System** | JWT-based authentication, API keys, role-based access (admin/user/viewer) |
+| 🛡️ **Watch Mode** | Monitors financial, social, admin sites. Blocks dangerous actions. Requires confirmation for irreversible operations |
+| ⏰ **Task Scheduler** | Cron-like recurring tasks, retry policies, webhook notifications |
+| 🔍 **Deep Research** | Multi-step web research with source verification, citations, and confidence scoring |
+| 📊 **Full Dashboard** | Real-time monitoring, provider status, terminal, browser control, and more |
 
 ---
 
 ## 🚀 Quick Start
 
-### Install
+### 1. Install
 ```bash
 npm install
 npx playwright install chromium  # For browser automation
 ```
 
-### Run a task (CLI)
+### 2. Configure API Keys
 ```bash
-node operator.mjs "search Google for AI agents and summarize the top 3"
-node operator.mjs "create a Python script that scrapes product prices from a website"
-node operator.mjs "list all running processes and kill the one using the most memory"
+cp config/.env.example config/.env
+# Edit config/.env with your API keys (at minimum OPENCODE_ZEN_API_KEY)
 ```
 
-### Start API server
+**Free API key**: Get one at [https://opencode.ai/auth](https://opencode.ai/auth) — includes 7 free models!
+
+### 3. Run
+
 ```bash
+# Start server with dashboard
 node operator.mjs --server
-# → Dashboard: http://localhost:3000/dashboard
-# → API: http://localhost:3000/api
-# → WebSocket: ws://localhost:3000/ws
-```
 
-### Execute a single action
-```bash
-node operator.mjs --action=screenshot
-node operator.mjs --action=browser_goto --url=https://google.com
-node operator.mjs --action=terminal_exec --command="ls -la"
+# Run a single task
+node operator.mjs "search Google for AI agents and summarize the top 3"
+
+# List available AI models
+node operator.mjs --models
+
+# Check gateway status
+node operator.mjs --gateway-status
 ```
 
 ---
 
-## 📁 Architecture
+## 🧠 AI Gateway
 
+The v4.0 Gateway provides unified access to 23+ AI providers with:
+
+- **Smart routing**: Automatically picks the best provider for each model
+- **Failover**: If one provider fails, automatically tries the next
+- **Key rotation**: Round-robin API key rotation for load balancing
+- **Rate limiting**: Respects per-provider rate limits
+- **Cost tracking**: Real-time token and cost tracking
+- **Streaming**: SSE streaming support for real-time responses
+
+### Provider Priority
+
+| Priority | Provider | Key Env Var | Free? |
+|----------|----------|-------------|-------|
+| 1️⃣ | **OpenCode Zen** | `OPENCODE_ZEN_API_KEY` | ✅ 7 free models |
+| 2️⃣ | **GMI Cloud** | `GMI_API_KEY` | ❌ |
+| 3️⃣ | OpenCode Go | `OPENCODE_GO_API_KEY` | ❌ |
+| 4️⃣ | GitHub Copilot | `GITHUB_COPILOT_TOKEN` | ✅ (subscription) |
+| 5️⃣ | Nous Portal | `NOUS_API_KEY` | ✅ |
+| 6️⃣ | NVIDIA NIM | `NVIDIA_API_KEY` | ❌ |
+| 7️⃣ | DeepSeek | `DEEPSEEK_API_KEY` | ❌ |
+| 8️⃣ | Anthropic | `ANTHROPIC_API_KEY` | ❌ |
+| 9️⃣ | OpenAI | `OPENAI_API_KEY` | ❌ |
+| 🔟 | Google Gemini | `GOOGLE_API_KEY` | ✅ Free tier |
+| ... | + 13 more providers | | |
+
+### Gateway API
+
+```bash
+# List models
+curl http://localhost:3000/api/gateway/models
+
+# Chat completion
+curl -X POST http://localhost:3000/api/gateway/chat \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"big-pickle","messages":[{"role":"user","content":"Hello"}]}'
+
+# Stream chat
+curl -X POST http://localhost:3000/api/gateway/chat \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":"Hello"}],"stream":true}'
 ```
-operator/
-├── operator.mjs              ← Main entry point (CLI + Server)
-├── operator/
-│   ├── brain.mjs             ← Multi-provider AI reasoning
-│   ├── memory.mjs            ← Task persistence
-│   ├── knowledge.mjs         ← Documentation loader
-│   ├── actions.mjs           ← Action registry (backward-compat)
-│   ├── platform/
-│   │   └── index.mjs         ← Cross-platform OS abstraction
-│   ├── engines/
-│   │   ├── browser.mjs       ← Browser automation (Playwright/Puppeteer)
-│   │   ├── terminal.mjs      ← Shell execution engine
-│   │   ├── screen.mjs        ← Screenshot + OCR + vision
-│   │   └── filesystem.mjs    ← File ops + HTTP client
-│   ├── core/
-│   │   ├── orchestrator.mjs  ← Task coordination & execution loop
-│   │   └── plugins.mjs       ← Plugin system
-│   ├── server/
-│   │   └── api.mjs           ← REST API + WebSocket server
-│   └── plugins/              ← Custom plugins directory
-├── dashboard/
-│   └── index.html            ← Web dashboard
-└── config/
-    └── .env                  ← API keys and settings
+
+---
+
+## 🔐 Authentication
+
+v4.0 includes a full auth system with JWT tokens and role-based access.
+
+```bash
+# Login with API key
+curl -X POST http://localhost:3000/api/auth/login \
+  -d '{"apiKey":"op-admin-..."}'
+
+# Use token for API calls
+curl http://localhost:3000/api/tasks \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
-## 🔧 Configuration
+### Roles
 
-Create `config/.env`:
-```env
-# AI Providers (at least one required)
-GROQ_API_KEY=your_groq_key
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
-GOOGLE_API_KEY=your_google_key
-NVIDIA_API_KEY=your_nvidia_key
-OPENCODE_ZEN_API_KEY=your_opencode_key
+| Role | Permissions |
+|------|------------|
+| **admin** | Full access: tasks, browser, terminal, files, system, users, config, scheduler |
+| **user** | Standard: tasks, browser, terminal, files, research |
+| **viewer** | Read-only: view tasks and system info |
 
-# Server
-OPERATOR_PORT=3000
-OPERATOR_API_KEY=your_secret_key
+---
+
+## 🛡️ Watch Mode & Safety
+
+The Safety System protects against:
+
+- **Dangerous commands**: `rm -rf /`, `format`, `mkfs`, fork bombs (blocked)
+- **Sensitive URLs**: Financial, social, admin, government sites (flagged)
+- **PII leakage**: Detects phone numbers, SSN, credit cards, emails
+- **Irreversible actions**: Deletes, drops, truncates (require confirmation)
+
+```bash
+# Check URL category
+curl "http://localhost:3000/api/safety/check-url?url=https://paypal.com"
+
+# View safety audit log
+curl http://localhost:3000/api/safety/log
 ```
 
-## 📡 API Reference
+---
+
+## ⏰ Task Scheduler
+
+Schedule recurring tasks with cron expressions or intervals:
+
+```bash
+# Schedule a weekly task (every Monday at 9 AM)
+curl -X POST http://localhost:3000/api/scheduler \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"task":"update weekly spreadsheet","cron":"0 9 * * 1","name":"Weekly Report"}'
+
+# Schedule with interval (every 24 hours)
+curl -X POST http://localhost:3000/api/scheduler \
+  -d '{"task":"backup logs","interval":86400000}'
+
+# List scheduled jobs
+curl http://localhost:3000/api/scheduler
+
+# Toggle job
+curl -X POST http://localhost:3000/api/scheduler/job_id/toggle \
+  -d '{"enabled":false}'
+
+# Delete job
+curl -X DELETE http://localhost:3000/api/scheduler/job_id
+```
+
+---
+
+## 🔍 Deep Research
+
+Multi-step research powered by OpenCode Zen + GMI Cloud:
+
+```bash
+# Start research
+curl -X POST http://localhost:3000/api/research \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{
+    "query": "What are the latest trends in AI agents 2026?",
+    "options": {
+      "depth": 2,
+      "language": "es",
+      "format": "markdown"
+    }
+  }'
+```
+
+Research flow:
+1. **Analyze** → Understand the query, generate search queries
+2. **Search** → Execute web searches via browser or AI knowledge
+3. **Extract** → Pull key findings, data, and citations
+4. **Deep Dive** → Follow-up queries for deeper understanding
+5. **Synthesize** → Generate comprehensive report with confidence score
+
+---
+
+## 📡 Full API Reference
+
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/login` | Login with API key or password |
+| POST | `/api/auth/logout` | Logout (revoke token) |
+| GET | `/api/auth/me` | Get current user info |
 
 ### Tasks
 | Method | Endpoint | Description |
@@ -125,13 +214,6 @@ OPERATOR_API_KEY=your_secret_key
 | GET | `/api/tasks` | List active tasks |
 | GET | `/api/tasks/:id` | Get task details |
 | DELETE | `/api/tasks/:id` | Cancel a task |
-| GET | `/api/history` | Task history |
-
-### Actions
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/actions/execute` | Execute a single action |
-| POST | `/api/actions/batch` | Execute multiple actions |
 
 ### Browser
 | Method | Endpoint | Description |
@@ -142,46 +224,141 @@ OPERATOR_API_KEY=your_secret_key
 | POST | `/api/browser/type` | Type text |
 | POST | `/api/browser/screenshot` | Take screenshot |
 
+### Terminal
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/terminal/exec` | Execute command |
+
+### Research
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/research` | Start deep research |
+
+### Scheduler
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/scheduler` | Schedule a new job |
+| GET | `/api/scheduler` | List scheduled jobs |
+| DELETE | `/api/scheduler/:id` | Delete a job |
+| POST | `/api/scheduler/:id/toggle` | Enable/disable job |
+
+### Gateway
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/gateway/status` | Gateway health & usage |
+| GET | `/api/gateway/models` | List available models |
+| POST | `/api/gateway/chat` | Chat completion (supports streaming) |
+
+### Safety
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/safety/log` | Safety audit log |
+| POST | `/api/safety/confirm/:id` | Approve/deny pending action |
+| GET | `/api/safety/check-url` | Check URL category |
+
 ### System
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/system/info` | System information |
-| GET | `/api/system/processes` | List processes |
-| POST | `/api/terminal/exec` | Execute command |
+| GET | `/health` | Health check (public) |
+| GET | `/api/status` | System status |
+| GET | `/api/system/info` | Detailed system info |
 
 ### WebSocket
-Connect to `ws://host:port/ws` for real-time task monitoring.
+Connect to `ws://host:port/ws` for real-time events.
 
-## 🔌 Creating Plugins
+---
 
-Create a file in `operator/plugins/`:
-```javascript
-export default {
-  name: 'my-plugin',
-  version: '1.0.0',
-  actions: ['my_action'],
-  async execute(action) {
-    if (action.type === 'my_action') {
-      return { ok: true, message: 'Done!' };
-    }
-  }
-};
+## 📁 Architecture (v4.0)
+
+```
+operator/
+├── operator.mjs                    ← CLI entry point
+├── operator/
+│   ├── brain.mjs                   ← Multi-provider AI reasoning
+│   ├── memory.mjs                  ← Task persistence
+│   ├── knowledge.mjs               ← Documentation loader
+│   ├── gateway/                    ← 🆕 AI Gateway
+│   │   ├── index.mjs               ← Gateway with routing & failover
+│   │   ├── providers.mjs           ← 23 provider definitions
+│   │   └── tracker.mjs             ← Cost & usage tracking
+│   ├── auth/                       ← 🆕 Authentication
+│   │   └── index.mjs               ← JWT, API keys, RBAC
+│   ├── safety/                     ← 🆕 Watch Mode & Safety
+│   │   └── index.mjs               ← URL categories, PII detection, audit
+│   ├── scheduler/                  ← 🆕 Task Scheduler
+│   │   └── index.mjs               ← Cron scheduling, retry, notifications
+│   ├── engines/
+│   │   ├── browser.mjs             ← Browser automation (Playwright)
+│   │   ├── computer-use.mjs        ← CUA engine
+│   │   ├── terminal.mjs            ← Shell execution
+│   │   ├── screen.mjs              ← Screenshots + OCR
+│   │   ├── filesystem.mjs          ← File ops + HTTP
+│   │   └── research.mjs            ← 🆕 Deep Research engine
+│   ├── core/
+│   │   ├── orchestrator.mjs        ← Task coordination
+│   │   └── plugins.mjs             ← Plugin system
+│   ├── server/
+│   │   ├── api.mjs                 ← Original API server (v3)
+│   │   ├── api-v4.mjs              ← 🆕 Full API server (v4)
+│   │   └── start.mjs               ← 🆕 Server entry point
+│   └── platform/
+│       └── index.mjs               ← Cross-platform OS abstraction
+├── dashboard/                      ← 🆕 Full Web Dashboard
+│   ├── index.html
+│   ├── app.js
+│   └── styles.css
+├── config/
+│   └── .env                        ← API keys and settings
+└── data/                           ← Auto-created data directory
+    ├── auth.json                   ← User store
+    ├── usage.json                  ← Usage tracking
+    └── scheduler.json              ← Scheduled jobs
 ```
 
-Or use the template generator:
+---
+
+## 🔧 CLI Commands
+
 ```bash
-curl -X POST http://localhost:3000/api/plugins/template \
-  -H "Content-Type: application/json" \
-  -d '{"name":"my-plugin"}'
+# Server mode
+node operator.mjs --server                     # Start on port 3000
+node operator.mjs --server --port=8080         # Custom port
+node operator.mjs --server --watch-mode        # Enable Watch Mode
+node operator.mjs --server --verbose           # Debug logging
+
+# CLI tasks
+node operator.mjs "search Google for AI news"  # Run autonomous task
+node operator.mjs "create a Python script"     # Code generation
+node operator.mjs --brain=opencodeZen "task"   # Force specific provider
+
+# Info commands
+node operator.mjs --models                     # List all AI models
+node operator.mjs --gateway-status             # Provider health & stats
+node operator.mjs --list                       # Task history
+node operator.mjs --help                       # Show help
 ```
 
-## 🛡️ Safety
+---
 
-Operator Pro includes a safety layer that:
-- Detects dangerous commands (rm -rf /, format, drop database, etc.)
-- Requests confirmation before destructive operations
-- Can be configured with `--auto-confirm` for unattended operation
-- Tracks all actions in persistent memory for audit
+## 🆚 Comparison: Operator Pro v4.0 vs ChatGPT Operator
+
+| Feature | ChatGPT Operator | Operator Pro v4.0 |
+|---------|-------------------|-------------------|
+| AI Providers | OpenAI only | 23+ providers (OpenCode Zen, GMI Cloud, etc.) |
+| Free Models | ❌ | ✅ 7+ free models via OpenCode Zen |
+| API Key Rotation | ❌ | ✅ Round-robin with auto-failover |
+| Auth System | OpenAI account | JWT + API keys + RBAC |
+| Self-hosted | ❌ | ✅ Run anywhere |
+| Watch Mode | ✅ | ✅ + Custom URL categories |
+| Task Scheduler | ✅ (ChatGPT Agent) | ✅ Cron + intervals + webhooks |
+| Deep Research | ✅ (separate tool) | ✅ Built-in with citations |
+| Computer Use | Browser only | Browser + Desktop + Terminal |
+| Plugin System | ❌ | ✅ Custom plugins |
+| Open Source | ❌ | ✅ MIT License |
+| Dashboard | Basic | Full web UI with real-time |
+| Cost Tracking | ❌ | ✅ Per-provider cost analytics |
+
+---
 
 ## 📄 License
 

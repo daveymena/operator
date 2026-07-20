@@ -1,0 +1,63 @@
+# ═══════════════════════════════════════════════════════════════
+# 🤖 Operator Pro v4.0 — Docker Compose
+#
+# Features:
+#   • Auto-restart when tokens exhausted (restart: always)
+#   • SQLite DB persistence via volume
+#   • Environment variables from .env file
+#   • Health check built-in
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f operator
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  operator:
+    build: .
+    container_name: operator-pro
+    restart: always           # ← AUTO-RESTART when tokens exhausted
+    ports:
+      - "3000:3000"
+    volumes:
+      - operator-data:/app/data      # SQLite DB persistence
+      - ./config/.env:/app/config/.env:ro  # API keys
+    environment:
+      - NODE_ENV=production
+      - OPERATOR_PORT=3000
+      - OPERATOR_HOST=0.0.0.0
+      # API Keys (can also be in config/.env)
+      - OPENCODE_ZEN_API_KEY=${OPENCODE_ZEN_API_KEY:-}
+      - OPENCODE_GO_API_KEY=${OPENCODE_GO_API_KEY:-}
+      - GMI_API_KEY=${GMI_API_KEY:-}
+      - GITHUB_COPILOT_TOKEN=${GITHUB_COPILOT_TOKEN:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      # Server
+      - OPERATOR_API_KEY=${OPERATOR_API_KEY:-op-admin-change-me}
+      # Auto-restart config
+      - RESTART_COOLDOWN_MS=300000    # 5 min between restarts
+      - MAX_RESTART_ATTEMPTS=10       # Max auto-restarts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
+
+volumes:
+  operator-data:
+    driver: local
