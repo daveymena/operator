@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operator Pro — Dashboard</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg2: #12121a;
+      --bg3: #1a1a28;
+      --accent: #6c63ff;
+      --accent2: #00d4aa;
+      --danger: #ff4757;
+      --warn: #ffa502;
+      --text: #e8e8f0;
+      --text2: #8888a0;
+      --border: #2a2a3e;
+      --success: #2ed573;
+      --font: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      min-height: 100vh;
+    }
+
+    /* ─── Layout ──────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      grid-template-rows: 56px 1fr;
+      height: 100vh;
+    }
+
+    .header {
+      grid-column: 1 / -1;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header .status {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--danger);
+      display: inline-block;
+    }
+    .status-dot.connected { background: var(--success); animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .sidebar {
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .main {
+      background: var(--bg);
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .panel {
+      background: var(--bg2);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    /* ─── Components ──────────────────────────── */
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: var(--font);
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .btn:hover { filter: brightness(1.2); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.success { background: var(--accent2); color: #000; }
+    .btn.danger { background: var(--danger); }
+    .btn.outline { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+
+    .input {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-family: var(--font);
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input:focus { border-color: var(--accent); }
+    .input::placeholder { color: var(--text2); }
+
+    textarea.input { resize: vertical; min-height: 80px; }
+
+    .card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge.running { background: rgba(108,99,255,0.2); color: var(--accent); }
+    .badge.completed { background: rgba(46,213,115,0.2); color: var(--success); }
+    .badge.failed { background: rgba(255,71,87,0.2); color: var(--danger); }
+    .badge.queued { background: rgba(255,165,2,0.2); color: var(--warn); }
+
+    /* ─── Task Input ──────────────────────────── */
+    .task-input-area {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .task-input-area textarea { flex: 1; }
+
+    /* ─── Log Stream ──────────────────────────── */
+    .log-stream {
+      background: #0d0d14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 300px;
+      max-height: 600px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .log-entry .time { color: var(--text2); margin-right: 8px; }
+    .log-entry.thought { color: #b8b0ff; }
+    .log-entry.action { color: #00d4aa; }
+    .log-entry.result-ok { color: var(--success); }
+    .log-entry.result-fail { color: var(--danger); }
+    .log-entry.phase { color: var(--warn); font-weight: 600; }
+    .log-entry.system { color: var(--text2); }
+    .log-entry.plan { color: #ff9ff3; }
+
+    /* ─── Task List ──────────────────────────── */
+    .task-item {
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 6px;
+      transition: background 0.2s;
+      border: 1px solid transparent;
+    }
+    .task-item:hover { background: var(--bg3); }
+    .task-item.active { border-color: var(--accent); background: var(--bg3); }
+    .task-item .task-name { font-weight: 500; margin-bottom: 4px; }
+    .task-item .task-meta { font-size: 11px; color: var(--text2); }
+
+    /* ─── Stats ───────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat-card .value { font-size: 24px; font-weight: 700; }
+    .stat-card .label { font-size: 11px; color: var(--text2); margin-top: 4px; }
+    .stat-card.accent .value { color: var(--accent); }
+    .stat-card.success .value { color: var(--success); }
+    .stat-card.danger .value { color: var(--danger); }
+    .stat-card.warn .value { color: var(--warn); }
+
+    /* ─── System Panel ────────────────────────── */
+    .sys-item { padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .sys-item:last-child { border: none; }
+    .sys-label { font-size: 11px; color: var(--text2); }
+    .sys-value { font-weight: 500; }
+
+    /* ─── Section Headers ─────────────────────── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--text2);
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      margin-top: 16px;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* ─── Responsive ──────────────────────────── */
+    @media (max-width: 1024px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar, .panel { display: none; }
+    }
+
+    /* ─── Scrollbar ───────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>🤖 Operator Pro <span style="font-size:11px;color:var(--text2)">v3.0</span></h1>
+      <div class="status">
+        <span id="wsStatus"><span class="status-dot" id="statusDot"></span> <span id="statusText">Connecting...</span></span>
+        <span id="platformInfo"></span>
+        <span id="activeTasksCount">0 tasks</span>
+      </div>
+    </header>
+
+    <!-- Sidebar: Task History -->
+    <aside class="sidebar">
+      <div class="section-title">Active Tasks</div>
+      <div id="activeTasks"></div>
+      
+      <div class="section-title">History</div>
+      <div id="taskHistory"></div>
+
+      <div class="section-title" style="margin-top:24px">Quick Actions</div>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('screenshot')">📸 Screenshot</button>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('sysinfo')">💻 System Info</button>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('list_windows')">🪟 List Windows</button>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('browser_tabs')">🌐 Browser Tabs</button>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Task Input -->
+      <div class="task-input-area">
+        <textarea class="input" id="taskInput" placeholder="Describe a task for Operator... e.g., 'Search Google for AI agents and summarize the top 3 results'" rows="3"></textarea>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <button class="btn" id="runBtn" onclick="runTask()">▶ Run</button>
+          <button class="btn danger" id="stopBtn" onclick="stopTask()" disabled>■ Stop</button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card accent">
+          <div class="value" id="statSteps">0</div>
+          <div class="label">Steps</div>
+        </div>
+        <div class="stat-card success">
+          <div class="value" id="statSuccess">0</div>
+          <div class="label">Successful</div>
+        </div>
+        <div class="stat-card danger">
+          <div class="value" id="statFailed">0</div>
+          <div class="label">Failed</div>
+        </div>
+        <div class="stat-card warn">
+          <div class="value" id="statTime">0s</div>
+          <div class="label">Duration</div>
+        </div>
+      </div>
+
+      <!-- Log Stream -->
+      <div class="section-title">Live Execution Log</div>
+      <div class="log-stream" id="logStream">
+        <div class="log-entry system">
+          <span class="time">--:--:--</span>
+          Waiting for task...
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Panel: System Info -->
+    <aside class="panel">
+      <div class="section-title">System</div>
+      <div class="card" id="systemInfo">
+        <div class="sys-item"><span class="sys-label">Platform</span><div class="sys-value" id="sysPlatform">—</div></div>
+        <div class="sys-item"><span class="sys-label">Hostname</span><div class="sys-value" id="sysHostname">—</div></div>
+        <div class="sys-item"><span class="sys-label">CPUs</span><div class="sys-value" id="sysCpus">—</div></div>
+        <div class="sys-item"><span class="sys-label">Memory</span><div class="sys-value" id="sysMemory">—</div></div>
+        <div class="sys-item"><span class="sys-label">Uptime</span><div class="sys-value" id="sysUptime">—</div></div>
+        <div class="sys-item"><span class="sys-label">Node.js</span><div class="sys-value" id="sysNode">—</div></div>
+      </div>
+
+      <div class="section-title">Browser</div>
+      <div class="card">
+        <div class="sys-item">
+          <span class="sys-label">Status</span>
+          <div class="sys-value" id="browserStatus">Disconnected</div>
+        </div>
+        <button class="btn outline" style="width:100%;margin-top:8px" onclick="connectBrowser()">Connect Browser</button>
+      </div>
+
+      <div class="section-title">Plugins</div>
+      <div class="card" id="pluginsList">
+        <div class="sys-item"><span class="sys-label">Loading...</span></div>
+      </div>
+
+      <div class="section-title">Direct Action</div>
+      <div class="card">
+        <select class="input" id="actionSelect" style="margin-bottom:8px">
+          <option value="">Select action...</option>
+          <optgroup label="Browser">
+            <option value="browser_goto">browser_goto</option>
+            <option value="browser_click">browser_click</option>
+            <option value="browser_type">browser_type</option>
+            <option value="browser_screenshot">browser_screenshot</option>
+            <option value="browser_evaluate">browser_evaluate</option>
+          </optgroup>
+          <optgroup label="Screen">
+            <option value="screenshot">screenshot</option>
+            <option value="screen_ocr">screen_ocr</option>
+          </optgroup>
+          <optgroup label="Terminal">
+            <option value="terminal_exec">terminal_exec</option>
+          </optgroup>
+          <optgroup label="Files">
+            <option value="read_file">read_file</option>
+            <option value="list_dir">list_dir</option>
+          </optgroup>
+          <optgroup label="System">
+            <option value="sysinfo">sysinfo</option>
+            <option value="list_windows">list_windows</option>
+            <option value="list_processes">list_processes</option>
+          </optgroup>
+        </select>
+        <input class="input" id="actionParams" placeholder='{"url":"https://..."}' style="margin-bottom:8px">
+        <button class="btn success" style="width:100%" onclick="executeAction()">Execute</button>
+        <pre id="actionResult" style="margin-top:8px;font-size:11px;color:var(--text2);white-space:pre-wrap;max-height:200px;overflow-y:auto"></pre>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    // ─── State ──────────────────────────────────
+    let ws = null;
+    let currentTaskId = null;
+    let startTime = null;
+    let stepCount = 0;
+    let successCount = 0;
+    let failCount = 0;
+
+    // ─── WebSocket ──────────────────────────────
+    function connectWs() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+      ws.onopen = () => {
+        document.getElementById('statusDot').className = 'status-dot connected';
+        document.getElementById('statusText').textContent = 'Connected';
+        log('system', 'WebSocket connected');
+      };
+
+      ws.onclose = () => {
+        document.getElementById('statusDot').className = 'status-dot';
+        document.getElementById('statusText').textContent = 'Disconnected';
+        setTimeout(connectWs, 3000);
+      };
+
+      ws.onerror = () => {
+        document.getElementById('statusText').textContent = 'Error';
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleMessage(msg);
+        } catch (e) {
+          log('system', `Parse error: ${e.message}`);
+        }
+      };
+    }
+
+    function handleMessage(msg) {
+      switch (msg.type) {
+        case 'connected':
+          log('system', `Server: ${msg.server} (ID: ${msg.clientId?.substring(0,8)})`);
+          break;
+
+        case 'task:start':
+          currentTaskId = msg.taskId;
+          startTime = Date.now();
+          stepCount = 0; successCount = 0; failCount = 0;
+          document.getElementById('runBtn').disabled = true;
+          document.getElementById('stopBtn').disabled = false;
+          log('phase', `Task started: ${msg.task}`);
+          break;
+
+        case 'task:phase':
+          log('phase', `Phase: ${msg.phase}`);
+          break;
+
+        case 'task:plan':
+          if (msg.plan) {
+            log('plan', `Plan: ${msg.plan.goal} (${msg.plan.total_steps || msg.plan.steps?.length} steps)`);
+            msg.plan.steps?.forEach(s => log('plan', `  ${s.step}. ${s.goal}`));
+          }
+          break;
+
+        case 'step:start':
+          stepCount++;
+          document.getElementById('statSteps').textContent = stepCount;
+          document.getElementById('statTime').textContent = Math.round((Date.now() - startTime) / 1000) + 's';
+          break;
+
+        case 'step:decision':
+          log('thought', `🤔 ${msg.thought}`);
+          log('action', `🎬 ${msg.action?.type} ${JSON.stringify(msg.action?.params || {})}`);
+          break;
+
+        case 'step:result':
+          if (msg.ok) {
+            successCount++;
+            log('result-ok', `✅ OK (${msg.duration}ms)`);
+          } else {
+            failCount++;
+            log('result-fail', `❌ ${msg.error || 'Failed'} (${msg.duration}ms)`);
+          }
+          document.getElementById('statSuccess').textContent = successCount;
+          document.getElementById('statFailed').textContent = failCount;
+          document.getElementById('statTime').textContent = Math.round((Date.now() - startTime) / 1000) + 's';
+          break;
+
+        case 'step:stuck':
+          log('result-fail', `⚠️ Stuck (attempt ${msg.count})`);
+          break;
+
+        case 'task:complete':
+        case 'task:finished':
+          document.getElementById('runBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+          log('phase', `✅ Task completed: ${msg.reason || 'done'}`);
+          refreshHistory();
+          break;
+
+        case 'task:error':
+        case 'task:failed':
+          document.getElementById('runBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+          log('result-fail', `❌ Task failed: ${msg.error}`);
+          refreshHistory();
+          break;
+
+        case 'task:cancelled':
+          document.getElementById('runBtn').disabled = false;
+          document.getElementById('stopBtn').disabled = true;
+          log('result-fail', `⏹ Task cancelled`);
+          break;
+
+        case 'safety:confirm':
+          log('result-fail', `🚨 DANGEROUS: ${msg.action?.type} — Auto-confirming...`);
+          break;
+      }
+    }
+
+    // ─── Actions ────────────────────────────────
+
+    function runTask() {
+      const task = document.getElementById('taskInput').value.trim();
+      if (!task) return;
+      if (!ws || ws.readyState !== 1) { alert('Not connected to server'); return; }
+
+      ws.send(JSON.stringify({ type: 'run_task', task, options: {} }));
+      document.getElementById('logStream').innerHTML = '';
+    }
+
+    function stopTask() {
+      if (currentTaskId && ws) {
+        ws.send(JSON.stringify({ type: 'cancel_task', taskId: currentTaskId }));
+      }
+    }
+
+    async function quickAction(actionType) {
+      try {
+        const res = await fetch('/api/actions/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: { type: actionType, params: {} } })
+        });
+        const data = await res.json();
+        log('action', `Quick: ${actionType}`);
+        if (data.ok) log('result-ok', JSON.stringify(data).substring(0, 200));
+        else log('result-fail', data.error);
+      } catch (e) {
+        log('result-fail', e.message);
+      }
+    }
+
+    async function executeAction() {
+      const type = document.getElementById('actionSelect').value;
+      if (!type) return;
+      let params = {};
+      try { params = JSON.parse(document.getElementById('actionParams').value || '{}'); } catch {}
+
+      try {
+        const res = await fetch('/api/actions/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: { type, params } })
+        });
+        const data = await res.json();
+        document.getElementById('actionResult').textContent = JSON.stringify(data, null, 2);
+        log(data.ok ? 'result-ok' : 'result-fail', `${type}: ${data.ok ? 'OK' : data.error}`);
+      } catch (e) {
+        document.getElementById('actionResult').textContent = e.message;
+      }
+    }
+
+    async function connectBrowser() {
+      try {
+        const res = await fetch('/api/browser/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await res.json();
+        document.getElementById('browserStatus').textContent = data.ok ? `Connected (${data.backend})` : data.error;
+        log(data.ok ? 'result-ok' : 'result-fail', `Browser: ${data.ok ? data.backend : data.error}`);
+      } catch (e) {
+        document.getElementById('browserStatus').textContent = e.message;
+      }
+    }
+
+    // ─── UI Helpers ─────────────────────────────
+
+    function log(type, message) {
+      const stream = document.getElementById('logStream');
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.innerHTML = `<span class="time">${time}</span>${message}`;
+      stream.appendChild(entry);
+      stream.scrollTop = stream.scrollHeight;
+
+      // Keep max 500 entries
+      while (stream.children.length > 500) stream.removeChild(stream.firstChild);
+    }
+
+    async function refreshHistory() {
+      try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+        const container = document.getElementById('taskHistory');
+        container.innerHTML = data.tasks?.slice(0, 20).map(t => `
+          <div class="task-item" onclick="viewTask('${t.id}')">
+            <div class="task-name">${t.task?.substring(0, 40) || t.id}</div>
+            <div class="task-meta">
+              <span class="badge ${t.status}">${t.status}</span>
+              ${t.steps} steps · ${new Date(t.created).toLocaleDateString()}
+            </div>
+          </div>
+        `).join('') || '<div style="color:var(--text2)">No history yet</div>';
+      } catch {}
+    }
+
+    async function loadSystemInfo() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        if (data.system) {
+          document.getElementById('sysPlatform').textContent = data.system.os;
+          document.getElementById('sysHostname').textContent = data.system.hostname;
+          document.getElementById('sysCpus').textContent = `${data.system.cpus}x ${data.system.cpuModel?.substring(0, 30)}`;
+          document.getElementById('sysMemory').textContent = `${data.system.totalMemMB}MB (${data.system.freeMemMB}MB free)`;
+          document.getElementById('sysUptime').textContent = Math.round(data.system.uptime / 3600) + 'h';
+          document.getElementById('sysNode').textContent = data.system.node;
+          document.getElementById('platformInfo').textContent = data.system.os;
+        }
+        document.getElementById('activeTasksCount').textContent = `${data.activeTasks} task(s)`;
+        if (data.browser) document.getElementById('browserStatus').textContent = 'Connected';
+      } catch {}
+    }
+
+    async function loadPlugins() {
+      try {
+        const res = await fetch('/api/plugins');
+        const data = await res.json();
+        const container = document.getElementById('pluginsList');
+        container.innerHTML = data.plugins?.map(p => `
+          <div class="sys-item">
+            <div class="sys-value">${p.name} <span class="badge completed">v${p.version}</span></div>
+            <div class="sys-label">${p.actions?.length} actions: ${p.actions?.join(', ')}</div>
+          </div>
+        `).join('') || '<div class="sys-label">No plugins</div>';
+      } catch {}
+    }
+
+    async function viewTask(id) {
+      try {
+        const res = await fetch(`/api/tasks/${id}`);
+        const data = await res.json();
+        if (data.task) {
+          const stream = document.getElementById('logStream');
+          stream.innerHTML = '';
+          log('phase', `Task: ${data.task.task || data.task.id}`);
+          log('system', `Status: ${data.task.status} | Steps: ${data.task.steps?.length || 0}`);
+          data.task.steps?.forEach(s => {
+            log('thought', `[${s.step}] ${s.thought}`);
+            log('action', `${s.action?.type} ${JSON.stringify(s.action?.params || {})}`);
+            log(s.result?.ok ? 'result-ok' : 'result-fail', `${s.result?.ok ? '✅' : '❌'} ${s.result?.duration || '?'}ms`);
+          });
+        }
+      } catch {}
+    }
+
+    // ─── Init ───────────────────────────────────
+    connectWs();
+    loadSystemInfo();
+    loadPlugins();
+    refreshHistory();
+
+    // Refresh stats every 5s
+    setInterval(loadSystemInfo, 5000);
+
+    // Enter to run task
+    document.getElementById('taskInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.ctrlKey) runTask();
+    });
+  </script>
+</body>
+</html>

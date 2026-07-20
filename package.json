@@ -1,23 +1,51 @@
 {
   "name": "operator",
-  "version": "2.0.0",
-  "description": "Sistema autónomo de IA + Control PC + Automatización universal",
+  "version": "3.0.0",
+  "description": "Operator Pro — Autonomous AI Agent for Web, Desktop & Servers",
   "type": "module",
-  "main": "bridge/bridge.mjs",
+  "main": "operator/server/api.mjs",
+  "bin": {
+    "operator": "./operator.mjs"
+  },
   "scripts": {
-    "start": "node bridge/bridge.mjs",
-    "dev": "node bridge/bridge.mjs",
+    "start": "node operator.mjs --server",
+    "dev": "node operator.mjs --server --verbose",
     "operator": "node operator.mjs",
-    "docker-start": "node server-easypanel.mjs"
+    "api": "node operator/server/api.mjs",
+    "cli": "node operator.mjs",
+    "docker-start": "node operator/server/api.mjs --docker",
+    "test": "node --test operator/**/*.test.mjs"
   },
   "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.16.0",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
-    "express": "^5.2.1",
+    "playwright": "^1.49.0",
     "puppeteer": "^24.0.0",
-    "ws": "^8.16.0"
+    "node-pty": "^1.0.0",
+    "systeminformation": "^5.23.0",
+    "sharp": "^0.33.0",
+    "uuid": "^10.0.0",
+    "cors": "^2.8.5",
+    "helmet": "^8.0.0",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1"
+  },
+  "optionalDependencies": {
+    "node-mac-permissions": "^2.4.0",
+    "windows-native-registry": "^2.0.0"
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "keywords": [
+    "ai-agent",
+    "autonomous",
+    "operator",
+    "browser-automation",
+    "desktop-automation",
+    "rpa"
+  ],
+  "license": "MIT"
 }

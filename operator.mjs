@@ -1,267 +1,288 @@
+#!/usr/bin/env node
+
+/**
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║                    🤖 OPERATOR PRO v3.0                     ║
+ * ║          Autonomous AI Agent — Web, Desktop & Server        ║
+ * ╚══════════════════════════════════════════════════════════════╝
+ * 
+ * Operator Pro is a professional-grade autonomous agent that can:
+ * - Navigate the web with intelligent browser automation
+ * - Control desktop applications via screen + input simulation
+ * - Execute commands on any server via terminal
+ * - Plan, execute, and verify multi-step tasks with AI
+ * 
+ * Usage:
+ *   node operator.mjs "your task here"           — Run a task (CLI mode)
+ *   node operator.mjs --server                   — Start API server
+ *   node operator.mjs --server --port=3000       — Server on custom port
+ *   node operator.mjs --action browser_goto --url=https://google.com
+ *   node operator.mjs --list                     — Show task history
+ *   node operator.mjs --view=<id>                — View task details
+ */
+
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { setTimeout as sleep } from 'timers/promises';
 import dotenv from 'dotenv';
-import { Brain } from './operator/brain.mjs';
-import { BridgeClient } from './operator/bridge-client.mjs';
-import { Memory } from './operator/memory.mjs';
-import { Knowledge } from './operator/knowledge.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Load environment
 const envPath = path.join(__dirname, 'config', '.env');
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
-  if (process.argv.includes('--verbose') || process.argv.includes('--debug')) console.log(`  📄 .env cargado: ${envPath}`);
-}
-const CTX_FILE = path.join(__dirname, 'context.json');
-const MAX_STEPS = 50;
+if (fs.existsSync(envPath)) dotenv.config({ path: envPath });
+else dotenv.config();
 
-function log(msg) { if (!process.argv.includes('--silent')) console.log(msg); }
+// ─── Parse Arguments ───────────────────────────────────────────────────────────
 
 function parseArgs() {
   const raw = process.argv.slice(2);
   const flags = {};
   const positional = [];
+
   for (const arg of raw) {
     if (arg.startsWith('--')) {
-      const [k, v] = arg.includes('=') ? arg.slice(2).split('=') : [arg.slice(2), true];
-      flags[k] = v;
-    } else positional.push(arg);
+      const eq = arg.indexOf('=');
+      if (eq > 0) {
+        flags[arg.slice(2, eq)] = arg.slice(eq + 1);
+      } else {
+        flags[arg.slice(2)] = true;
+      }
+    } else {
+      positional.push(arg);
+    }
   }
+
   return { flags, task: positional.join(' ') };
 }
 
-export async function runTask(task, options = {}) {
-  const memory = new Memory().init(task);
-  const knowledge = new Knowledge();
-  const onProgress = options.onProgress || (() => {});
-  const { execute } = await import('./operator/actions.mjs');
-  const bridge = new BridgeClient({ verbose: options.verbose });
-  const brain = new Brain({
-    groqKey: options.groqKey || process.env.GROQ_API_KEY,
-    backend: options.brain || 'auto',
-    verbose: options.verbose,
-    bridge
+// ─── Server Mode ───────────────────────────────────────────────────────────────
+
+async function startServer(flags) {
+  const { createServer } = await import('./operator/server/api.mjs');
+  const server = createServer({
+    port: parseInt(flags.port) || 3000,
+    host: flags.host || '0.0.0.0',
+    apiKey: flags.key || process.env.OPERATOR_API_KEY,
+    verbose: flags.verbose || flags.dev,
+    headless: flags.headless !== false,
+    autoConfirm: flags['auto-confirm'],
+    basePath: __dirname
   });
 
-  const useBridge = options.useBridge !== false && await bridge.connect();
-  const execAction = useBridge ? (a) => bridge.execute(a) : execute;
+  await server.start();
 
-  onProgress({ type: 'start', task, brain: brain.backend, maxSteps: MAX_STEPS, taskId: memory.taskId });
-
-  let knowledgeLoaded = false;
-  if (options.docs) {
-    const docs = await knowledge.load(options.docs);
-    memory.setKnowledge(docs);
-    knowledgeLoaded = true;
-  } else {
-    await knowledge.loadProjectDocs();
-    await knowledge.loadOpenCodeTools();
-  }
-
-  let state = { description: 'Iniciando...', url: '', cursor: '', windows: '' };
-  let lastState = { description: '', cursor: '' };
-
-  // FASE 1: PLANIFICACIÓN
-  onProgress({ type: 'phase', phase: 'planning', message: 'Creando plan detallado...' });
-  const plan = await brain.createPlan(task, knowledgeLoaded ? knowledge.getSummary() : knowledge.getToolList());
-  if (plan && plan.goal) {
-    onProgress({ type: 'plan', goal: plan.goal, steps: plan.steps, total: plan.total_steps });
-    memory.data.plan = plan;
-  } else {
-    onProgress({ type: 'plan', goal: task, steps: [{ step: 1, goal: task }], total: 1 });
-  }
-
-  onProgress({ type: 'phase', phase: 'executing', message: 'Ejecutando plan...' });
-
-  for (let step = 1; step <= MAX_STEPS; step++) {
-    onProgress({ type: 'step', step, maxSteps: MAX_STEPS });
-
-    // Capturar estado actual
-    const ss = await execAction({ type: 'screenshot', params: { quality: 50, scale: 0.75 } });
-    if (ss.ok) {
-      state.description = await brain.describeImage(ss.base64);
-      onProgress({ type: 'screenshot', file: path.basename(ss.file), description: state.description });
-    }
-
-    const cursor = await execAction({ type: 'get_cursor', params: {} });
-    if (cursor.ok) state.cursor = cursor.output;
-
-    // Detectar si estamos estancados (mismo estado que antes)
-    const stuck = lastState.description === state.description && lastState.cursor === state.cursor && step > 2;
-    if (stuck) {
-      brain.consecutiveFailures++;
-      onProgress({ type: 'warning', message: `Estancado (intento ${brain.consecutiveFailures}) - cambiando estrategia` });
-      if (brain.consecutiveFailures >= 3) {
-        onProgress({ type: 'error', message: 'Demasiados intentos sin progreso, abortando' });
-        memory.markFailed('stuck_' + brain.consecutiveFailures + '_consecutive');
-        break;
-      }
-    } else {
-      brain.consecutiveFailures = 0;
-    }
-    lastState = { description: state.description, cursor: state.cursor };
-
-    const brainInput = knowledgeLoaded ? knowledge.getSummary() : knowledge.getToolList() + '\n\n' + knowledge.getSummary(5000);
-    const decision = await brain.think(task, state, brainInput, memory.getHistory());
-
-    if (!decision) {
-      memory.markFailed('brain_no_decision');
-      onProgress({ type: 'error', message: 'El cerebro no pudo decidir' });
-      break;
-    }
-
-    if (decision.done) {
-      memory.markDone(decision.reason || 'completada');
-      onProgress({ type: 'done', reason: decision.reason || 'Completado!', backend: decision._backend });
-      break;
-    }
-
-    // Validar que la acción tiene sentido
-    if (!decision.action || !decision.action.type) {
-      onProgress({ type: 'warning', message: 'Decisión sin acción válida, reintentando...' });
-      memory.addStep(decision.thought || 'sin razonamiento', { type: 'none', params: {} }, { ok: false, error: 'acción inválida' }, state.description);
-      continue;
-    }
-
-    // No permitir acciones sin razonamiento
-    if (!decision.thought || decision.thought.length < 10) {
-      onProgress({ type: 'warning', message: 'Razonamiento insuficiente, forzando reflexión...' });
-      decision.thought = 'Ejecutando: ' + decision.action.type + ' - confirma que esta acción es necesaria para el objetivo';
-    }
-
-    onProgress({ type: 'decision', thought: decision.thought, action: decision.action, backend: decision._backend, planStep: decision._planStep, goal: decision._goal });
-    const result = await execAction(decision.action);
-    onProgress({ type: 'result', ok: result.ok, error: result.error, duration: result.duration });
-    memory.addStep(decision.thought, decision.action, result, state.description);
-
-    // Verificar resultado
-    if (result.ok) {
-      const verifyResult = await brain.verify(decision.action, result, lastState.description, state.description);
-      if (verifyResult && verifyResult.verified) {
-        onProgress({ type: 'verified', message: verifyResult.reason });
-        if (verifyResult.advance_plan) {
-          const planAdvance = brain.advancePlan();
-          if (planAdvance.done) {
-            onProgress({ type: 'plan_progress', message: 'Plan completado — tarea finalizada' });
-            memory.markDone('plan completado exitosamente');
-            onProgress({ type: 'done', reason: 'Plan completado exitosamente', backend: decision._backend });
-            break;
-          } else {
-            onProgress({ type: 'plan_progress', message: `Avanzando al paso ${planAdvance.currentStep}/${planAdvance.totalSteps}` });
-          }
-        }
-      } else {
-        onProgress({ type: 'warning', message: `Acción no verificada: ${verifyResult?.reason || 'desconocido'}` });
-        if (verifyResult?.action_needed === 'retry' && brain.consecutiveFailures < 2) {
-          onProgress({ type: 'retry', message: `Reintentando con enfoque diferente: ${verifyResult.reason}` });
-          brain.consecutiveFailures++;
-        }
-      }
-    } else {
-      brain.failedActions++;
-      onProgress({ type: 'failure', message: `Acción falló: ${result.error}` });
-      if (brain.failedActions >= 5) {
-        onProgress({ type: 'error', message: 'Demasiados fallos consecutivos' });
-        memory.markFailed('too_many_failures_' + brain.failedActions);
-        break;
-      }
-    }
-
-    const delays = { mouse_click: 1500, keyboard_type: 500, open_url: 2000, powershell: 2000, browser_goto: 3000, browser_click: 1500, browser_type: 1000 };
-    await sleep(delays[decision.action?.type] || 800);
-  }
-
-  bridge.close();
-  const summary = memory.getSummary();
-  onProgress({ type: 'summary', ...summary });
-  return summary;
+  process.on('SIGINT', async () => {
+    console.log('\n🛑 Shutting down Operator Pro...');
+    await server.stop();
+    process.exit(0);
+  });
 }
+
+// ─── CLI Mode (Task Execution) ─────────────────────────────────────────────────
+
+async function runCLITask(task, flags) {
+  const { getOrchestrator } = await import('./operator/core/orchestrator.mjs');
+
+  const orchestrator = getOrchestrator({
+    verbose: flags.verbose || flags.debug,
+    headless: flags.headless !== false,
+    basePath: __dirname
+  });
+
+  await orchestrator.init();
+
+  // Set up progress display
+  orchestrator.on('task:start', (e) => {
+    console.log(`\n╔══════════════════════════════════════════════════════════════╗`);
+    console.log(`║              🤖 OPERATOR PRO — Task Running                 ║`);
+    console.log(`╚══════════════════════════════════════════════════════════════╝`);
+    console.log(`  🎯 Task: ${task}`);
+    console.log(`  🆔 ID: ${e.taskId}`);
+    console.log('');
+  });
+
+  orchestrator.on('task:phase', (e) => {
+    console.log(`  📋 Phase: ${e.phase}`);
+  });
+
+  orchestrator.on('task:plan', (e) => {
+    if (e.plan) {
+      console.log(`  📋 Plan: ${e.plan.goal}`);
+      console.log(`     Steps: ${e.plan.total_steps || e.plan.steps?.length}`);
+      e.plan.steps?.forEach(s => console.log(`       ${s.step}. ${s.goal}`));
+      console.log('');
+    }
+  });
+
+  orchestrator.on('step:start', (e) => {
+    console.log(`  ── Step ${e.step}/${e.maxSteps} ──`);
+  });
+
+  orchestrator.on('step:decision', (e) => {
+    console.log(`  🤔 ${e.thought}`);
+    console.log(`  🎬 ${e.action?.type} ${JSON.stringify(e.action?.params || {})}`);
+    if (e.backend) console.log(`  🧠 Backend: ${e.backend}`);
+  });
+
+  orchestrator.on('step:result', (e) => {
+    console.log(`  📊 ${e.ok ? '✅' : '❌'} (${e.duration || 0}ms)${e.error ? ` — ${e.error}` : ''}`);
+  });
+
+  orchestrator.on('step:stuck', (e) => {
+    console.log(`  ⚠️  Stuck (attempt ${e.count}) — changing strategy`);
+  });
+
+  orchestrator.on('step:dangerous', (e) => {
+    console.log(`  🚨 DANGEROUS ACTION: ${e.action?.type}`);
+    if (!orchestrator.autoConfirm) {
+      console.log('     ⏳ Waiting for confirmation... (auto-confirm with --auto-confirm)');
+    }
+  });
+
+  orchestrator.on('task:complete', (e) => {
+    console.log(`\n  ✅ Task completed: ${e.reason || 'done'}`);
+    console.log(`  📊 Steps: ${e.steps}`);
+  });
+
+  orchestrator.on('task:error', (e) => {
+    console.log(`\n  ❌ Task failed: ${e.error}`);
+  });
+
+  // Run task
+  const result = await orchestrator.runTask(task, {
+    brain: flags.brain || 'auto',
+    docs: flags.docs,
+    maxSteps: parseInt(flags.steps) || 50,
+    groqKey: flags.groq || process.env.GROQ_API_KEY
+  });
+
+  await orchestrator.shutdown();
+
+  // Update context.json
+  try {
+    const ctxFile = path.join(__dirname, 'context.json');
+    const ctx = fs.existsSync(ctxFile) ? JSON.parse(fs.readFileSync(ctxFile, 'utf8')) : { sessions: [] };
+    ctx.lastUsed = new Date().toISOString();
+    ctx.sessions.push({ timestamp: ctx.lastUsed, task: task.substring(0, 100), status: result.ok ? 'completed' : 'failed' });
+    fs.writeFileSync(ctxFile, JSON.stringify(ctx, null, 2));
+  } catch {}
+
+  return result;
+}
+
+// ─── Direct Action Execution ───────────────────────────────────────────────────
+
+async function executeDirectAction(flags) {
+  const { getOrchestrator } = await import('./operator/core/orchestrator.mjs');
+
+  const orchestrator = getOrchestrator({ verbose: flags.verbose, basePath: __dirname });
+  await orchestrator.init();
+
+  const action = { type: flags.action, params: {} };
+
+  // Build params from flags
+  for (const [k, v] of Object.entries(flags)) {
+    if (!['action', 'verbose', 'debug', 'headless'].includes(k)) {
+      action.params[k] = v;
+    }
+  }
+
+  const result = await orchestrator.executeAction(action);
+  console.log(JSON.stringify(result, null, 2));
+  await orchestrator.shutdown();
+  return result;
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
   const { flags, task } = parseArgs();
 
-  if (flags.list) {
-    const tasks = Memory.listTasks();
-    if (tasks.length === 0) { console.log('  No hay tareas anteriores.'); return; }
-    console.log(`\n  📋 TAREAS ANTERIORES (${tasks.length}):\n`);
-    tasks.forEach(t => console.log(`  ${t.status === 'completed' ? '✅' : '❌'} [${t.id}] ${t.task} — ${t.steps} pasos — ${new Date(t.created).toLocaleString()}${t.hasKnowledge ? ' 📚' : ''}`));
+  // Server mode
+  if (flags.server) {
+    await startServer(flags);
     return;
   }
 
+  // List tasks
+  if (flags.list) {
+    const { Memory } = await import('./operator/memory.mjs');
+    const tasks = Memory.listTasks();
+    if (!tasks.length) { console.log('  No previous tasks.'); return; }
+    console.log(`\n  📋 TASK HISTORY (${tasks.length}):\n`);
+    tasks.forEach(t => console.log(
+      `  ${t.status === 'completed' ? '✅' : '❌'} [${t.id}] ${t.task} — ${t.steps} steps — ${new Date(t.created).toLocaleString()}`
+    ));
+    return;
+  }
+
+  // View task
   if (flags.view) {
+    const { Memory } = await import('./operator/memory.mjs');
     const mem = new Memory(flags.view);
-    if (!mem.data.steps.length) { console.log('  Tarea no encontrada.'); return; }
+    if (!mem.data.steps.length) { console.log('  Task not found.'); return; }
     const d = mem.data;
     console.log(`\n  📋 ${d.task}`);
-    console.log(`  Estado: ${d.status} | Pasos: ${d.steps.length} | Creada: ${new Date(d.created).toLocaleString()}`);
-    if (d.completedAt) console.log(`  Completada: ${new Date(d.completedAt).toLocaleString()}`);
-    if (d.reason) console.log(`  Razón: ${d.reason}`);
-    if (d.error) console.log(`  Error: ${d.error}`);
-    if (d.knowledge) console.log(`  📚 Knowledge: ${d.knowledge.substring(0, 200)}...`);
-    d.steps.forEach(s => console.log(`\n  [${s.step}] 🤔 ${s.thought}\n        🎬 ${s.action?.type} ${JSON.stringify(s.action?.params||{})}\n        📊 ${s.result?.ok ? '✅' : '❌'} (${s.result?.duration||'?'}ms)`));
+    console.log(`  Status: ${d.status} | Steps: ${d.steps.length} | Created: ${new Date(d.created).toLocaleString()}`);
+    if (d.completedAt) console.log(`  Completed: ${new Date(d.completedAt).toLocaleString()}`);
+    if (d.reason) console.log(`  Reason: ${d.reason}`);
+    d.steps.forEach(s => console.log(
+      `\n  [${s.step}] 🤔 ${s.thought}\n        🎬 ${s.action?.type} ${JSON.stringify(s.action?.params || {})}\n        📊 ${s.result?.ok ? '✅' : '❌'} (${s.result?.duration || '?'}ms)`
+    ));
     return;
   }
 
-  if (flags.help || !task) {
-    console.log(`
-  🤖 OPERATOR - SISTEMA AUTÓNOMO TOTAL
+  // Direct action execution
+  if (flags.action) {
+    await executeDirectAction(flags);
+    return;
+  }
 
-  node operator.mjs [flags] "tu tarea"
+  // Help
+  if (flags.help || (!task && !flags.server)) {
+    console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║                    🤖 OPERATOR PRO v3.0                     ║
+║          Autonomous AI Agent — Web, Desktop & Server        ║
+╚══════════════════════════════════════════════════════════════╝
+
+  USAGE:
+    node operator.mjs "your task"                  Run a task autonomously
+    node operator.mjs --server                     Start API server
+    node operator.mjs --server --port=8080         Server on port 8080
+    node operator.mjs --action=<type> --<param>    Execute a single action
+    node operator.mjs --list                       Show task history
+    node operator.mjs --view=<id>                  View task details
 
   FLAGS:
-    --docs=<path|url>   Carga documentación de una app antes de actuar
-    --brain=groq|hermes|local  Fuerza un backend de IA específico
-    --list              Muestra tareas anteriores
-    --view=<id>         Muestra detalle de una tarea
-    --silent            Modo silencioso
+    --server                 Start in API server mode
+    --port=<n>               Server port (default: 3000)
+    --key=<apikey>           API key for authentication
+    --brain=<backend>        Force AI backend (groq, copilot, openai, etc.)
+    --docs=<path|url>        Load documentation before acting
+    --steps=<n>              Max steps (default: 50)
+    --verbose                Verbose output
+    --auto-confirm           Auto-confirm dangerous actions
+    --headless               Run browser headless (default: true)
+    --action=<type>          Execute single action directly
 
-  EJEMPLOS:
-    node operator.mjs "crea campañas en facebook ads"
-    node operator.mjs --docs="./docs" "analiza el sistema y ejecuta"
-    node operator.mjs --docs="https://ejemplo.com/api-docs" "prueba la API"
-    node operator.mjs --brain=groq "automatiza lo que veas en pantalla"
-    node operator.mjs --list
-    node operator.mjs --view=task_12345
+  EXAMPLES:
+    node operator.mjs "open google and search for AI agents"
+    node operator.mjs "create a Python script that scrapes product prices"
+    node operator.mjs --server --key=my-secret-key
+    node operator.mjs --action=browser_goto --url=https://google.com
+    node operator.mjs --action=terminal_exec --command="ls -la"
+    node operator.mjs --action=screenshot
     `);
     return;
   }
 
-  const options = {};
-  if (flags.docs) options.docs = flags.docs;
-  if (flags.brain) options.brain = flags.brain;
-
-  const ctx = JSON.parse(fs.readFileSync(CTX_FILE, 'utf8'));
-  ctx.lastUsed = new Date().toISOString();
-  ctx.sessions.push({ timestamp: ctx.lastUsed, task: task.substring(0, 100), status: 'started' });
-  fs.writeFileSync(CTX_FILE, JSON.stringify(ctx, null, 2));
-
-  options.onProgress = (msg) => {
-    switch (msg.type) {
-      case 'start': log(`\n╔════════════════════════════════════════════════════╗\n║     🤖 OPERATOR - SISTEMA AUTÓNOMO TOTAL          ║\n╚════════════════════════════════════════════════════╝\n\n  🎯 ${msg.task}\n  🧠 Brain: ${msg.brain}\n  🔄 Pasos máx: ${msg.maxSteps}\n  🆔 ID: ${msg.taskId}\n`); break;
-      case 'phase': log(`\n  📋 FASE: ${msg.phase} — ${msg.message}\n`); break;
-      case 'plan': log(`  📋 PLAN: ${msg.goal}\n     Pasos: ${msg.total}\n     ${(msg.steps||[]).map(s => `\n       ${s.step}. ${s.goal}`).join('')}\n`); break;
-      case 'plan_progress': log(`  📍 ${msg.message}`); break;
-      case 'step': log(`  ── Paso ${msg.step}/${msg.maxSteps} ──`); break;
-      case 'screenshot': log(`  📸 ${msg.file}`); break;
-      case 'decision': {
-        const goal = msg.goal ? ` [${msg.goal.substring(0, 60)}]` : '';
-        log(`  🤔 ${msg.thought}\n  🎬 ${msg.action?.type} ${JSON.stringify(msg.action?.params || {})}${goal}`);
-        break;
-      }
-      case 'result': log(`  📊 ${msg.ok ? '✅' : '❌'} (${msg.duration || 0}ms)${!msg.ok && msg.error ? `\n     ⚠️ ${msg.error}` : ''}`); break;
-      case 'verified': log(`  ✅ Verificado: ${msg.message}`); break;
-      case 'warning': log(`  ⚠️ ${msg.message}`); break;
-      case 'retry': log(`  🔄 ${msg.message}`); break;
-      case 'failure': log(`  ❌ ${msg.message}`); break;
-      case 'done': log(`\n  ✅ ${msg.reason}`); break;
-      case 'error': log(`  ❌ ${msg.message}`); break;
-      case 'summary': log(`\n${'═'.repeat(55)}\n  📊 ${msg.status === 'completed' ? '✅' : '❌'} ${msg.task}\n     Pasos: ${msg.steps} | ✅ ${msg.successful} | ❌ ${msg.failed}\n     Tiempo: ${msg.duration}\n${'═'.repeat(55)}\n`); break;
-    }
-  };
-  await runTask(task, options);
+  // Run task
+  await runCLITask(task, flags);
 }
 
-main().catch(e => { console.error('ERROR:', e.message); process.exit(1); });
+main().catch(e => {
+  console.error('FATAL:', e.message);
+  process.exit(1);
+});
