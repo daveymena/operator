@@ -57,3 +57,8 @@ assets/VIDEO/
 # Mantener docs markdown en knowledge, ignorar el resto
 operator/knowledge/*
 !operator/knowledge/*.md
+data/operator.db
+
+# SQLite database (generated at runtime)
+data/*.db
+data/*.json

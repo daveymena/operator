@@ -1,7 +1,7 @@
 {
   "name": "operator",
-  "version": "3.0.0",
-  "description": "Operator Pro — Autonomous AI Agent for Web, Desktop & Servers",
+  "version": "4.0.0",
+  "description": "Operator Pro v4.0 — Autonomous AI Agent with Gateway, Auth, Scheduler, Deep Research & Watch Mode",
   "type": "module",
   "main": "operator/server/api.mjs",
   "bin": {
@@ -24,6 +24,7 @@
     "helmet": "^8.3.0",
     "morgan": "^1.11.0",
     "multer": "^1.4.5-lts.1",
+    "sql.js": "^1.14.1",
     "systeminformation": "^5.23.0",
     "uuid": "^10.0.0",
     "ws": "^8.21.1"
