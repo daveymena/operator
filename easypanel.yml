@@ -1,39 +1,48 @@
 services:
-  opencode:
+  operator:
     type: app
     build:
       type: dockerfile
       context: .
       dockerfile: Dockerfile
     domains:
+      # Dashboard + API (main domain)
       - host: "$(PRIMARY_DOMAIN)"
+        port: 3000
+        https: true
+      # OpenCode Web UI
+      - host: "code-$(PRIMARY_DOMAIN)"
         port: 21293
         https: true
+      # Agent WebSocket
       - host: "agent-$(PRIMARY_DOMAIN)"
         port: 21291
         https: true
     env:
-      PORT: "21293"
-      OPENCODE_WORKSPACE: /workspace
-      OPENCODE_SERVER_PASSWORD: "$(OPENCODE_SERVER_PASSWORD)"
-      OPENCODE_PORT: "21293"
-      OPERATOR_API_PORT: "3001"
-      AGENT_WS_PORT: "21291"
-      AGENT_SERVER_URL: "ws://localhost:21291/agent"
-      BRIDGE_PORT: "21295"
-      HERMES_PORT: "21294"
+      # ─── Core ───
       NODE_ENV: "production"
       TZ: "America/Bogota"
       DISPLAY: ":99"
+      OPERATOR_PORT: "3000"
+      BRIDGE_PORT: "20100"
+      OPENCODE_PORT: "21293"
+      AGENT_WS_PORT: "21291"
+      AGENT_SERVER_URL: "ws://localhost:21291/agent"
+
+      # ─── Browser ───
+      PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+      CHROME_BIN: "/usr/bin/chromium"
+      PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright"
+      SCREENSHOT_QUALITY: "60"
+      SCREENSHOT_SCALE: "0.75"
+
+      # ─── OpenCode ───
+      OPENCODE_WORKSPACE: /workspace
+      OPENCODE_SERVER_PASSWORD: "$(OPENCODE_SERVER_PASSWORD)"
       AGENT_SERVER_TOKEN: "$(AGENT_SERVER_TOKEN)"
 
-      DB_HOST: "$(DB_HOST)"
-      DB_PORT: "$(DB_PORT)"
-      DB_USER: "$(DB_USER)"
-      DB_PASSWORD: "$(DB_PASSWORD)"
-      DB_NAME: "$(DB_NAME)"
-      DATABASE_URL: "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
-
+      # ─── AI Providers ───
       GROQ_API_KEY: "$(GROQ_API_KEY)"
       OPENROUTER_API_KEY: "$(OPENROUTER_API_KEY)"
       CEREBRAS_API_KEY: "$(CEREBRAS_API_KEY)"
@@ -45,26 +54,40 @@ services:
       XAI_API_KEY: "$(XAI_API_KEY)"
       NVIDIA_API_KEY: "$(NVIDIA_API_KEY)"
       DEEPSEEK_API_KEY: "$(DEEPSEEK_API_KEY)"
-      PUTER_AUTH_TOKEN: "$(PUTER_AUTH_TOKEN)"
       OLLAMA_HOST: "$(OLLAMA_HOST)"
-
       OPENCODE_ZEN_API_KEY: "$(OPENCODE_ZEN_API_KEY)"
       FREEMODEL_API_KEY: "$(FREEMODEL_API_KEY)"
       FREEMODEL_BASE_URL: "$(FREEMODEL_BASE_URL)"
       FREEMODEL_MODEL: "$(FREEMODEL_MODEL)"
       GITHUB_COPILOT_TOKEN: "$(GITHUB_COPILOT_TOKEN)"
       GITHUB_TOKEN: "$(GITHUB_TOKEN)"
-      COPILOT_MODEL: "$(COPILOT_MODEL)"
-      GITHUB_COPILOT_ENABLED: "$(GITHUB_COPILOT_ENABLED)"
-      USE_COPILOT_FIRST: "$(USE_COPILOT_FIRST)"
-      SCREENSHOT_QUALITY: "60"
-      SCREENSHOT_SCALE: "0.75"
-      INSTRUCTION_TIMEOUT: "20000"
+      PUTER_AUTH_TOKEN: "$(PUTER_AUTH_TOKEN)"
 
+      # ─── Database ───
+      DB_HOST: "$(DB_HOST)"
+      DB_PORT: "$(DB_PORT)"
+      DB_USER: "$(DB_USER)"
+      DB_PASSWORD: "$(DB_PASSWORD)"
+      DB_NAME: "$(DB_NAME)"
+      DATABASE_URL: "postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=disable"
+
+      # ─── Facebook Ads ───
       FACEBOOK_ACCESS_TOKEN: "$(FACEBOOK_ACCESS_TOKEN)"
-      FACEBOOK_AD_ACCOUNT_ID: "$(FACEBOOK_AD_ACCOUNT_ID)"
+      FACEBOOK_AD_ACCOUNT: "$(FACEBOOK_AD_ACCOUNT_ID)"
       FACEBOOK_PAGE_ID: "$(FACEBOOK_PAGE_ID)"
 
+      # ─── Notifications ───
+      TELEGRAM_BOT_TOKEN: "$(TELEGRAM_BOT_TOKEN)"
+      TELEGRAM_CHAT_ID: "$(TELEGRAM_CHAT_ID)"
+      SLACK_WEBHOOK_URL: "$(SLACK_WEBHOOK_URL)"
+      SMTP_HOST: "$(SMTP_HOST)"
+      SMTP_PORT: "$(SMTP_PORT)"
+      SMTP_USER: "$(SMTP_USER)"
+      SMTP_PASS: "$(SMTP_PASS)"
+      EMAIL_FROM: "$(EMAIL_FROM)"
+      EMAIL_TO: "$(EMAIL_TO)"
+
+      # ─── Custom Skills ───
       CLARO_SKILL_SRC: "/app/skills/claro-agent/src"
       CLARO_SKILL_DATA: "/app/skills-data/claro-agent"
       CLARO_FORM_URL: "$(CLARO_FORM_URL)"
@@ -75,7 +98,6 @@ services:
       TECH_NOMBRE: "$(TECH_NOMBRE)"
       TECH_TELEFONO: "$(TECH_TELEFONO)"
       TECH_CIUDAD: "$(TECH_CIUDAD)"
-
       PREOP_SKILL_SRC: "/app/skills/preoperacional-nova/src"
       PREOP_SKILL_DATA: "/app/skills-data/preoperacional-nova"
       PREOP_URL: "$(PREOP_URL)"
@@ -84,29 +106,26 @@ services:
       PREOP_SUPERVISOR: "$(PREOP_SUPERVISOR)"
       PREOP_SCHEDULE_HOUR: "$(PREOP_SCHEDULE_HOUR)"
       PREOP_SCHEDULE_MINUTE: "$(PREOP_SCHEDULE_MINUTE)"
-      SMTP_HOST: "$(SMTP_HOST)"
-      SMTP_PORT: "$(SMTP_PORT)"
-      SMTP_USER: "$(SMTP_USER)"
-      SMTP_PASS: "$(SMTP_PASS)"
-      EMAIL_FROM: "$(EMAIL_FROM)"
-      EMAIL_TO: "$(EMAIL_TO)"
-      TELEGRAM_BOT_TOKEN: "$(TELEGRAM_BOT_TOKEN)"
-      TELEGRAM_CHAT_ID: "$(TELEGRAM_CHAT_ID)"
-
-      PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"
-      CHROME_BIN: "/usr/bin/chromium"
-      PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright"
 
     mounts:
       - type: volume
-        name: opencode-workspace
+        name: operator-workspace
         mountPath: /workspace
       - type: volume
-        name: opencode-data
+        name: operator-data
         mountPath: /root/.local/share/opencode
       - type: volume
-        name: opencode-config
+        name: operator-config
         mountPath: /root/.config/opencode
       - type: volume
-        name: opencode-skills-data
+        name: operator-screenshots
+        mountPath: /app/screenshots
+      - type: volume
+        name: operator-logs
+        mountPath: /app/logs
+      - type: volume
+        name: operator-skills-data
         mountPath: /app/skills-data
+      - type: volume
+        name: operator-memory
+        mountPath: /app/operator/memory
