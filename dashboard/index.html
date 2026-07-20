@@ -279,6 +279,11 @@
       <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('sysinfo')">💻 System Info</button>
       <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('list_windows')">🪟 List Windows</button>
       <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="quickAction('browser_tabs')">🌐 Browser Tabs</button>
+
+      <div class="section-title" style="margin-top:24px">Facebook Ads</div>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="fbAnalyze()">📊 Analizar Métricas</button>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="fbCreateCampaign()">🚀 Crear Campaña</button>
+      <button class="btn outline" style="width:100%;margin-bottom:6px" onclick="fbSegmentAudience()">🎯 Segmentar Audiencia</button>
     </aside>
 
     <!-- Main Content -->
@@ -312,8 +317,23 @@
         </div>
       </div>
 
+      <!-- Controls (Pause/Resume/Takeover like ChatGPT Operator) -->
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn outline" id="pauseBtn" onclick="pauseTask()" disabled style="flex:1">⏸ Pause</button>
+        <button class="btn outline" id="resumeBtn" onclick="resumeTask()" disabled style="flex:1">▶ Resume</button>
+        <button class="btn danger" id="takeoverBtn" onclick="takeover()" disabled style="flex:1">🖐 Takeover</button>
+      </div>
+
+      <!-- Live Screen View (like ChatGPT Operator shows the browser) -->
+      <div class="section-title">Live Screen (lo que Operator está viendo)</div>
+      <div id="liveScreen" style="background:#000;border:1px solid var(--border);border-radius:8px;min-height:200px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;overflow:hidden;position:relative">
+        <span style="color:var(--text2)" id="screenPlaceholder">Sin pantalla activa — ejecuta una tarea para ver en vivo</span>
+        <img id="screenImage" style="display:none;max-width:100%;max-height:400px;object-fit:contain" />
+        <div id="clickIndicator" style="display:none;position:absolute;width:20px;height:20px;border:2px solid #ff4757;border-radius:50%;pointer-events:none;animation:pulse 0.5s"></div>
+      </div>
+
       <!-- Log Stream -->
-      <div class="section-title">Live Execution Log</div>
+      <div class="section-title">Live Execution Log (pensamiento + acción + resultado)</div>
       <div class="log-stream" id="logStream">
         <div class="log-entry system">
           <span class="time">--:--:--</span>
@@ -572,6 +592,87 @@
         document.getElementById('browserStatus').textContent = e.message;
       }
     }
+
+    // ─── Facebook Ads Functions (like ChatGPT Operator demo) ────
+
+    async function fbAnalyze() {
+      log('phase', '📊 Analizando métricas de Facebook Ads...');
+      const task = 'Analiza las métricas de mis campañas de Facebook Ads de los últimos 30 días. Muéstrame CTR, CPC, impresiones y dame recomendaciones';
+      document.getElementById('taskInput').value = task;
+      runTask();
+    }
+
+    async function fbCreateCampaign() {
+      const name = prompt('Nombre de la campaña:', 'Campaña Operator Pro');
+      if (!name) return;
+      const objective = prompt('Objetivo (traffic, engagement, leads, sales):', 'traffic');
+      const budget = prompt('Presupuesto diario (COP):', '5000');
+      
+      const task = `Crea una campaña en Facebook Ads Manager llamada "${name}" con objetivo ${objective} y presupuesto diario de $${budget} COP. Configura audiencia Colombia 22-50 años. Guárdala como borrador.`;
+      document.getElementById('taskInput').value = task;
+      runTask();
+    }
+
+    async function fbSegmentAudience() {
+      const location = prompt('Ubicación:', 'Colombia');
+      const ageMin = prompt('Edad mínima:', '22');
+      const ageMax = prompt('Edad máxima:', '50');
+      const interests = prompt('Intereses (separados por coma):', 'tecnología, marketing digital');
+      
+      const task = `En Facebook Ads Manager, segmenta una audiencia en ${location}, edad ${ageMin}-${ageMax} años, con intereses: ${interests}. Verifica que el tamaño de audiencia sea adecuado.`;
+      document.getElementById('taskInput').value = task;
+      runTask();
+    }
+
+    // ─── Pause/Resume/Takeover (like ChatGPT Operator) ────────
+
+    function pauseTask() {
+      if (currentTaskId && ws) {
+        ws.send(JSON.stringify({ type: 'cancel_task', taskId: currentTaskId }));
+        log('system', '⏸ Task paused by user');
+        document.getElementById('pauseBtn').disabled = true;
+        document.getElementById('resumeBtn').disabled = false;
+      }
+    }
+
+    function resumeTask() {
+      const task = document.getElementById('taskInput').value;
+      if (task) {
+        runTask();
+        document.getElementById('resumeBtn').disabled = true;
+        document.getElementById('pauseBtn').disabled = false;
+      }
+    }
+
+    function takeover() {
+      log('system', '🖐 TAKEOVER: You now have control. The agent is paused.');
+      log('system', 'Make your changes in the browser, then click Resume to let the agent continue.');
+      document.getElementById('pauseBtn').disabled = false;
+      document.getElementById('takeoverBtn').disabled = true;
+    }
+
+    // ─── Live Screen Update ──────────────────────────────────
+
+    async function refreshScreen() {
+      try {
+        const res = await fetch('/api/browser/screenshot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (res.headers.get('content-type')?.includes('image')) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const img = document.getElementById('screenImage');
+          img.src = url;
+          img.style.display = 'block';
+          document.getElementById('screenPlaceholder').style.display = 'none';
+        }
+      } catch {}
+    }
+
+    // Refresh screen every 3s when task is running
+    setInterval(() => {
+      if (currentTaskId && !document.getElementById('runBtn').disabled) {
+        refreshScreen();
+      }
+    }, 3000);
 
     // ─── UI Helpers ─────────────────────────────
 
