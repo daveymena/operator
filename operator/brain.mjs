@@ -60,7 +60,7 @@ export class Brain {
     this._activeBackend = null;
     this._backendFailCount = 0;
     this._backendCache = new Map();
-    this._backendPriority = ['groq', 'opencodeZen', 'copilot', 'opencodeGo', 'freemodel', 'nvidia', 'hermes', 'opencode', 'bridge', 'local'];
+    this._backendPriority = ['opencodeGo', 'opencodeZen', 'groq', 'copilot', 'freemodel', 'nvidia', 'hermes', 'opencode', 'bridge', 'local'];
   }
 
   setPlan(plan) {
@@ -138,9 +138,9 @@ Responde SOLO con JSON:
     } else if (this._activeBackend && this._backendFailCount < 2) {
       backends = [this._activeBackend, ...this._backendPriority.filter(b => b !== this._activeBackend)];
     } else if (taskType === 'testing' || taskType === 'facebook') {
-      backends = ['groq', 'opencodeZen', 'copilot', 'opencodeGo', 'freemodel', 'nvidia', 'hermes', 'opencode', 'bridge', 'local'];
+      backends = ['opencodeGo', 'opencodeZen', 'groq', 'copilot', 'freemodel', 'nvidia', 'hermes', 'opencode', 'bridge', 'local'];
     } else if (this.consecutiveFailures > 0) {
-      backends = ['groq', 'copilot', 'opencodeGo', 'freemodel', 'opencodeZen', 'nvidia', 'hermes', 'opencode', 'bridge', 'local'];
+      backends = ['opencodeGo', 'opencodeZen', 'groq', 'copilot', 'freemodel', 'nvidia', 'hermes', 'opencode', 'bridge', 'local'];
     } else {
       backends = this._backendPriority;
     }
@@ -189,7 +189,7 @@ ESTADO ACTUAL: ${stateAfter?.substring(0, 1000) || 'desconocido'}
   "advance_plan": true/false
 }`;
 
-    const backends = ['opencodeZen', 'copilot', 'groq', 'opencodeGo', 'nvidia'];
+    const backends = ['opencodeGo', 'opencodeZen', 'groq', 'copilot', 'nvidia'];
     for (const backend of backends) {
       try {
         const result = await this[`_${backend}`](verifyPrompt);
