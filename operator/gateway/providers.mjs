@@ -26,12 +26,31 @@ export const PROVIDERS = [
       'gemini-3.1-pro', 'gemini-3-pro', 'gemini-3-flash',
       // Open models
       'kimi-k2.5', 'kimi-k2-thinking', 'big-pickle',
-      'minimax-m2.7', 'minimax-m2.5', 'glm-5', 'glm-4.7'
+      'minimax-m2.7', 'minimax-m2.5', 'glm-5', 'glm-4.7',
+      // Free tier (opencode.ai/auth)
+      'mimo-v2.5-free', 'minimax-m2.5-free'
     ],
     costPerToken: { input: 0.000003, output: 0.000015 },
     rateLimits: { rpm: 60, tpm: 200000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'mimo-v2.5-free'
+  },
+
+  {
+    id: 'groq',
+    name: 'Groq',
+    url: 'https://api.groq.com/openai/v1',
+    key: 'GROQ_API_KEY',
+    priority: 2,
+    tier: 'primary',
+    description: 'Groq LPU inference — fast Llama vision & text models',
+    models: ['llama-3.1-8b-instant', 'llama-3.2-90b-vision-preview', 'llama-3.2-11b-vision-preview'],
+    costPerToken: { input: 0, output: 0 },
+    rateLimits: { rpm: 30, tpm: 100000 },
+    streaming: true,
+    vision: true,
+    visionModel: 'llama-3.2-90b-vision-preview'
   },
 
   // ═══ SECONDARY ═══════════════════════════════════════════════════════
@@ -73,7 +92,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0.000001, output: 0.000005 },
     rateLimits: { rpm: 40, tpm: 150000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'mimo-v2.5-pro'
   },
 
   {
@@ -94,7 +114,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0, output: 0 }, // Included in subscription
     rateLimits: { rpm: 30, tpm: 100000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'gpt-4o'
   },
 
   {
@@ -130,12 +151,14 @@ export const PROVIDERS = [
     models: [
       'nemotron-3-super-120b', 'nemotron-3-nano',
       'llama-3.3-nemotron', 'qwen3.5-397b',
-      'deepseek-v3.2', 'kimi-k2.6', 'minimax-m2.5', 'glm5'
+      'deepseek-v3.2', 'kimi-k2.6', 'minimax-m2.5', 'glm5',
+      'llama-3.2-90b-vision-preview'
     ],
     costPerToken: { input: 0.000002, output: 0.000008 },
     rateLimits: { rpm: 20, tpm: 80000 },
     streaming: true,
-    vision: false
+    vision: true,
+    visionModel: 'llama-3.2-90b-vision-preview'
   },
 
   {
@@ -170,7 +193,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0.000003, output: 0.000015 },
     rateLimits: { rpm: 50, tpm: 200000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'claude-sonnet-4-6'
   },
 
   {
@@ -188,7 +212,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0.000005, output: 0.000015 },
     rateLimits: { rpm: 60, tpm: 200000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'gpt-4o'
   },
 
   {
@@ -206,7 +231,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0, output: 0 }, // Free tier
     rateLimits: { rpm: 15, tpm: 60000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'gemini-3-flash-preview'
   },
 
   {
@@ -224,7 +250,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0.000001, output: 0.000004 },
     rateLimits: { rpm: 30, tpm: 100000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'glm-5v-turbo'
   },
 
   {
@@ -258,7 +285,8 @@ export const PROVIDERS = [
     costPerToken: { input: 0.000001, output: 0.000003 },
     rateLimits: { rpm: 20, tpm: 60000 },
     streaming: true,
-    vision: true
+    vision: true,
+    visionModel: 'mimo-v2-omni'
   },
 
   {

@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import axios from 'axios';
+import { PROVIDERS } from './gateway/providers.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HERMES_CORE = path.resolve(__dirname, '..', '..', 'hermes-core');
@@ -210,42 +211,93 @@ ESTADO ACTUAL: ${stateAfter?.substring(0, 1000) || 'desconocido'}
     return { advanced: false, done: true };
   }
 
-  async describeImage(base64) {
+  async describeImage(base64, opts = {}) {
     if (!base64) return 'Sin imagen disponible';
     if (this.backend === 'local') {
       return `[Screenshot de ${Math.round(base64.length / 1024)}KB - análisis local no disponible]`;
     }
-    for (const fn of [() => this._nvidiaVision(base64), () => this._groqVision(base64)]) {
-      try { const r = await fn(); if (r) return r; } catch {}
+    const mimeType = opts.mimeType || 'image/png';
+    const prompt = opts.prompt || 'Describe EXACTAMENTE lo que ves en esta imagen. Incluye: URL del navegador si visible, botones, textos, campos de formulario, menús, y cualquier elemento interactivo.';
+    let lastError = '';
+    for (const provider of this._visionCandidates()) {
+      try {
+        const result = await this._callVisionProvider(provider, base64, mimeType, prompt);
+        if (result) return result;
+      } catch (e) {
+        lastError = e.response?.status || e.message;
+        if (this.verbose) console.log(`  ⚠️ Vision[${provider.id}]: ${lastError}`);
+      }
     }
-    return `[Análisis visual no disponible - screenshot de ${Math.round(base64.length / 1024)}KB]`;
+    return `[Análisis visual no disponible (${lastError || 'sin proveedores de visión configurados'}) - imagen de ${Math.round(base64.length / 1024)}KB]`;
   }
 
-  async _nvidiaVision(base64) {
-    const visionModels = [
-      'deepseek-ai/deepseek-v4-flash',
-      'nvidia/llama-3.2-90b-vision-preview',
-      'nvidia/neva-22b'
-    ];
-    for (const model of visionModels) {
-      try {
-        const res = await axios.post(`${this.nvidiaUrl}/chat/completions`, {
-          model,
-          messages: [{
-            role: 'user',
-            content: `Describe EXACTAMENTE lo que ves en esta captura de pantalla. Incluye: URL del navegador si visible, botones, textos, campos de formulario, menús, y cualquier elemento interactivo.`
-          }],
-          temperature: 0.1,
-          max_tokens: 1024
-        }, {
-          headers: { 'Authorization': `Bearer ${this.nvidiaKey}`, 'Content-Type': 'application/json' },
-          timeout: 30000
-        });
-        const result = res.data?.choices?.[0]?.message?.content;
-        if (result) return result;
-      } catch { continue; }
+  _visionCandidates() {
+    return PROVIDERS
+      .filter(p => p.vision && (p.local || (p.key && process.env[p.key])))
+      .sort((a, b) => a.priority - b.priority);
+  }
+
+  async _callVisionProvider(provider, base64, mimeType, prompt) {
+    const model = (provider.id === 'groq' && this.visionModel) ? this.visionModel : (provider.visionModel || provider.models[0]);
+    const apiKey = provider.local ? '' : process.env[provider.key];
+    if (provider.id === 'anthropic') return this._anthropicVision(provider, model, apiKey, base64, mimeType, prompt);
+    if (provider.id === 'gemini') return this._geminiVision(provider, model, apiKey, base64, mimeType, prompt);
+    return this._openAICompatibleVision(provider, model, apiKey, base64, mimeType, prompt);
+  }
+
+  async _openAICompatibleVision(provider, model, apiKey, base64, mimeType, prompt) {
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+    if (provider.id === 'copilot') {
+      Object.assign(headers, {
+        'Editor-Version': 'vscode/1.96.0',
+        'Editor-Plugin-Version': 'copilot/1.250.0',
+        'Openai-Organization': 'github-copilot',
+        'Copilot-Integration-Id': 'vscode-chat'
+      });
     }
-    return null;
+    const res = await axios.post(`${provider.url}/chat/completions`, {
+      model,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' } }
+        ]
+      }],
+      temperature: 0.1,
+      max_tokens: 1024
+    }, { headers, timeout: 30000 });
+    return res.data?.choices?.[0]?.message?.content || null;
+  }
+
+  async _anthropicVision(provider, model, apiKey, base64, mimeType, prompt) {
+    const res = await axios.post(`${provider.url}/v1/messages`, {
+      model,
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    }, {
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      timeout: 30000
+    });
+    return res.data?.content?.[0]?.text || null;
+  }
+
+  async _geminiVision(provider, model, apiKey, base64, mimeType, prompt) {
+    const res = await axios.post(`${provider.url}/models/${model}:generateContent?key=${apiKey}`, {
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mimeType, data: base64 } }
+        ]
+      }]
+    }, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+    return res.data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
   }
 
   async _nvidia(prompt) {
@@ -475,25 +527,6 @@ ESTADO ACTUAL: ${stateAfter?.substring(0, 1000) || 'desconocido'}
       if (this.verbose) console.log(`  ⚠️ Groq error: ${e.response?.status || e.message}`);
       return null;
     }
-  }
-
-  async _groqVision(base64) {
-    if (!this.groqKey || this.groqKey === 'tu_api_key_de_groq_aqui') return null;
-    const res = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: 'llama-3.2-90b-vision-preview',
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: 'Describe exactamente lo que ves. URL, botones, textos, campos, elementos interactivos.' },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${base64}`, detail: 'high' } }
-        ]
-      }],
-      temperature: 0.1, max_tokens: 1024
-    }, {
-      headers: { Authorization: `Bearer ${this.groqKey}`, 'Content-Type': 'application/json' },
-      timeout: 30000
-    });
-    return res.data.choices[0].message.content;
   }
 
   async _bridge(prompt) {
