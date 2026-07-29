@@ -72,6 +72,7 @@ export class Orchestrator extends EventEmitter {
   // ─── Initialization ────────────────────────────────────────────────────────
 
   async init() {
+    this.brain = new Brain({ verbose: this.verbose });
     this.browser = getBrowser({ verbose: this.verbose });
     this.terminal = getTerminal({ verbose: this.verbose });
     this.screen = getScreen({ verbose: this.verbose });

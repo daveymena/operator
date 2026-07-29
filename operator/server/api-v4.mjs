@@ -19,6 +19,7 @@
 import express from 'express';
 import cors from 'cors';
 import http from 'http';
+import multer from 'multer';
 import { WebSocketServer } from 'ws';
 import { EventEmitter } from 'events';
 import { getAuth } from '../auth/index.mjs';
@@ -29,6 +30,8 @@ import { TaskScheduler } from '../scheduler/index.mjs';
 import { getDatabase } from '../db/index.mjs';
 import { AutoRestartManager } from './auto-restart.mjs';
 import { v4 as uuid } from 'uuid';
+
+const imageUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 export class OperatorServer extends EventEmitter {
   constructor(config = {}) {
@@ -94,6 +97,7 @@ export class OperatorServer extends EventEmitter {
     this._setupSafetyRoutes();
     this._setupSystemRoutes();
     this._setupTokenRoutes();
+    this._setupVisionRoutes();
 
     // Error handler
     this.app.use((err, req, res, next) => {
@@ -473,6 +477,32 @@ export class OperatorServer extends EventEmitter {
         autoRestart: this.autoRestart?.getStatus() || null,
         tokenManager: this.gateway.tokenManager?.getStatus() || null
       });
+    });
+  }
+
+  // ─── Vision Routes ──────────────────────────────────────────────────────
+
+  _setupVisionRoutes() {
+    this.app.post('/api/vision/image', this.auth.requirePermission('vision:analyze'), imageUpload.single('image'), async (req, res) => {
+      if (!this.orchestrator?.brain) return res.status(503).json({ error: 'Vision engine not available' });
+
+      let base64, mimeType;
+      if (req.file) {
+        base64 = req.file.buffer.toString('base64');
+        mimeType = req.file.mimetype;
+      } else if (req.body.base64) {
+        base64 = req.body.base64;
+        mimeType = req.body.mimeType || 'image/png';
+      } else {
+        return res.status(400).json({ error: 'Provide an "image" file upload or a "base64" field' });
+      }
+
+      try {
+        const description = await this.orchestrator.brain.describeImage(base64, { mimeType, prompt: req.body.question });
+        res.json({ ok: true, description });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
     });
   }
 

@@ -26,13 +26,13 @@ export const ROLES = {
     permissions: ['tasks:create', 'tasks:read', 'tasks:delete', 'tasks:execute',
       'browser:control', 'terminal:exec', 'files:read', 'files:write',
       'system:info', 'system:control', 'users:manage', 'config:manage',
-      'scheduler:manage', 'research:execute', 'plugins:manage']
+      'scheduler:manage', 'research:execute', 'plugins:manage', 'vision:analyze']
   },
   user: {
     name: 'User',
     permissions: ['tasks:create', 'tasks:read', 'tasks:execute',
       'browser:control', 'terminal:exec', 'files:read', 'files:write',
-      'system:info', 'research:execute']
+      'system:info', 'research:execute', 'vision:analyze']
   },
   viewer: {
     name: 'Viewer',

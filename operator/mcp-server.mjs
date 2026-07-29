@@ -27,6 +27,8 @@
  *      y OpenCode usará Operator automáticamente
  */
 
+import fs from 'fs/promises';
+import path from 'path';
 import { getOrchestrator } from './core/orchestrator.mjs';
 import { FacebookAdsSkill } from './skills/facebook-ads.mjs';
 import { FacebookAdsMetrics } from './skills/facebook-ads-metrics.mjs';
@@ -158,6 +160,20 @@ const TOOLS = [
     name: 'operator_describe_screen',
     description: 'Toma un screenshot y lo describe usando IA (ve lo que hay en pantalla)',
     inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'operator_analyze_image',
+    description: 'Analiza una imagen (foto, diagrama, UI, etc.) con IA de visión. Acepta una ruta local, una URL, o el contenido en base64.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Ruta local de la imagen' },
+        url: { type: 'string', description: 'URL de la imagen' },
+        base64: { type: 'string', description: 'Imagen ya codificada en base64' },
+        mime_type: { type: 'string', description: 'Tipo MIME de la imagen (default: image/png)' },
+        question: { type: 'string', description: 'Pregunta específica sobre la imagen (opcional)' }
+      }
+    }
   },
 
   // ═══ FILE SYSTEM ═══
@@ -464,6 +480,12 @@ async function executeTool(name, args) {
         }
         return formatResult(result);
       }
+      case 'operator_analyze_image': {
+        const image = await loadImageInput(args);
+        if (!image.ok) return formatResult(image);
+        const desc = await orchestrator.brain.describeImage(image.base64, { mimeType: image.mimeType, prompt: args.question });
+        return { content: [{ type: 'text', text: desc || 'No se pudo analizar la imagen' }] };
+      }
 
       // Filesystem
       case 'operator_read_file': {
@@ -624,6 +646,31 @@ async function executeTool(name, args) {
     }
   } catch (e) {
     return { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true };
+  }
+}
+
+const MIME_BY_EXT = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' };
+
+async function loadImageInput({ path: filePath, url, base64, mime_type }) {
+  try {
+    if (base64) {
+      return { ok: true, base64, mimeType: mime_type || 'image/png' };
+    }
+    if (filePath) {
+      const buf = await fs.readFile(filePath);
+      const mimeType = mime_type || MIME_BY_EXT[path.extname(filePath).toLowerCase()] || 'image/png';
+      return { ok: true, base64: buf.toString('base64'), mimeType };
+    }
+    if (url) {
+      const res = await fetch(url);
+      if (!res.ok) return { ok: false, error: `No se pudo descargar la imagen (${res.status})` };
+      const buf = Buffer.from(await res.arrayBuffer());
+      const mimeType = mime_type || res.headers.get('content-type') || 'image/png';
+      return { ok: true, base64: buf.toString('base64'), mimeType };
+    }
+    return { ok: false, error: 'Debes proveer path, url, o base64' };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 }
 
