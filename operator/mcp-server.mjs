@@ -38,7 +38,6 @@ import { AlertSystem } from './skills/alert-system.mjs';
 import { CampaignTemplates } from './skills/campaign-templates.mjs';
 import { getTerminal } from './engines/terminal.mjs';
 import { getBrowser } from './engines/browser.mjs';
-import { getScreen } from './engines/screen.mjs';
 import { getFilesystem } from './engines/filesystem.mjs';
 import platform from './platform/index.mjs';
 
@@ -464,17 +463,17 @@ async function executeTool(name, args) {
 
       // Screen
       case 'operator_screenshot': {
-        const screen = getScreen();
-        const result = await screen.capture();
-        if (result.ok) {
-          return { content: [{ type: 'text', text: `Screenshot saved: ${result.file}` }] };
+        // Vía orchestrator.executeAction para que use el bridge remoto (PC real)
+        // cuando está conectado, en vez de la pantalla local del proceso.
+        const result = await orchestrator.executeAction({ type: 'screenshot', params: {} });
+        if (result?.ok !== false && (result?.ok || result?.base64)) {
+          return { content: [{ type: 'text', text: `Screenshot: ${result.file || 'captured (base64)'}` }] };
         }
         return formatResult(result);
       }
       case 'operator_describe_screen': {
-        const screen = getScreen();
-        const result = await screen.capture({ quality: 50, scale: 0.75 });
-        if (result.ok && orchestrator.brain) {
+        const result = await orchestrator.executeAction({ type: 'screenshot', params: { quality: 50, scale: 0.75 } });
+        if (result?.base64 && orchestrator.brain) {
           const desc = await orchestrator.brain.describeImage(result.base64);
           return { content: [{ type: 'text', text: desc || 'Could not describe image' }] };
         }
@@ -589,13 +588,14 @@ async function executeTool(name, args) {
         return { content: [{ type: 'text', text }] };
       }
 
-      // System
+      // System — vía orchestrator.executeAction para reportar la PC real
+      // cuando hay bridge conectado, no el contenedor.
       case 'operator_system_info': {
-        const info = await platform.getSystemInfo();
+        const info = await orchestrator.executeAction({ type: 'sysinfo', params: {} });
         return formatResult({ ok: true, ...info });
       }
       case 'operator_list_windows': {
-        const result = await platform.listWindows();
+        const result = await orchestrator.executeAction({ type: 'list_windows', params: {} });
         return formatResult(result);
       }
       case 'operator_list_processes': {
@@ -603,13 +603,14 @@ async function executeTool(name, args) {
         return formatResult(result);
       }
 
-      // Mouse / Keyboard
+      // Mouse / Keyboard — vía orchestrator.executeAction (usa el bridge remoto
+      // hacia la PC real cuando está conectado; si no, cae a control local).
       case 'operator_mouse_click': {
-        const result = await platform.mouseClick(args.x, args.y, args.button || 'left');
+        const result = await orchestrator.executeAction({ type: 'mouse_click', params: { x: args.x, y: args.y, button: args.button || 'left' } });
         return formatResult(result);
       }
       case 'operator_keyboard_type': {
-        const result = await platform.keyboardType(args.text);
+        const result = await orchestrator.executeAction({ type: 'keyboard_type', params: { text: args.text } });
         return formatResult(result);
       }
 

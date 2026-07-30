@@ -23,6 +23,11 @@ services:
       OPERATOR_HOST: "0.0.0.0"
       AGENT_WS_PORT: "21291"
       AGENT_SERVER_URL: "ws://localhost:21291/agent"
+      AGENT_SERVER_HTTP_URL: "http://localhost:21291"
+      # Token compartido entre agent-server.mjs (aquí) y pc-agent.mjs (tu PC,
+      # via connect-easypanel.bat) — sin esto, el endpoint público /agent
+      # acepta cualquier conexión como "PC agente".
+      AGENT_SERVER_TOKEN: "$(AGENT_SERVER_TOKEN)"
 
       # ─── Browser ───
       PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"

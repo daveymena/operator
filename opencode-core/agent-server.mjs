@@ -70,11 +70,22 @@ function listAgents() {
   return [...agents.entries()].map(([id, a]) => ({ id, name: a.name, sysinfo: a.sysinfo, connectedAt: a.connectedAt }));
 }
 
+function isAuthorized(req) {
+  if (!AUTH_TOKEN) return true;
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  return token === AUTH_TOKEN;
+}
+
 const apiServer = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${WS_PORT}`);
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+  // Control total de la PC vive detrás de estas rutas — exigir el mismo
+  // Bearer token que ya se exige para registrar un agente por WebSocket.
+  // /health queda abierto (liveness probe de EasyPanel).
+  if (url.pathname !== '/health' && !isAuthorized(req)) { return unauthorized(res); }
   try {
     if (url.pathname === '/agents' && req.method === 'GET') {
       const list = listAgents();

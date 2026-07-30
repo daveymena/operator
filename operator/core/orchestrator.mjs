@@ -24,6 +24,7 @@ import { getTerminal } from '../engines/terminal.mjs';
 import { getScreen } from '../engines/screen.mjs';
 import { getFilesystem } from '../engines/filesystem.mjs';
 import platform from '../platform/index.mjs';
+import { BridgeClient } from '../bridge-client.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MAX_STEPS = 50;
@@ -61,6 +62,7 @@ export class Orchestrator extends EventEmitter {
     this.terminal = null;
     this.screen = null;
     this.filesystem = null;
+    this.bridgeClient = null;
     this.plugins = new Map();
     this.activeTasks = new Map();
     this.verbose = config.verbose || false;
@@ -77,11 +79,28 @@ export class Orchestrator extends EventEmitter {
     this.terminal = getTerminal({ verbose: this.verbose });
     this.screen = getScreen({ verbose: this.verbose });
     this.filesystem = getFilesystem({ verbose: this.verbose, basePath: this.config.basePath || process.cwd() });
+    this.bridgeClient = new BridgeClient({ verbose: this.verbose });
 
     // Connect to browser (non-blocking)
     this.browser.connect({ headless: this.config.headless }).catch(() => {});
+    // Connect to the remote PC bridge (non-blocking). Cuando no hay bridge
+    // disponible (uso 100% local), las acciones de plataforma caen a `platform.*`.
+    this.bridgeClient.connect().catch(() => {});
 
     return this;
+  }
+
+  /**
+   * Ejecuta una acción de plataforma/pantalla en la PC remota vía el bridge si
+   * está conectado; si no, la ejecuta localmente (proceso actual). Ver
+   * BridgeClient.sendCommand para por qué esto no usa BridgeClient.execute().
+   */
+  async _pcAction(action, localFn) {
+    if (this.bridgeClient?.connected) {
+      const remote = await this.bridgeClient.sendCommand(action);
+      if (remote) return remote;
+    }
+    return localFn();
   }
 
   // ─── Task Execution ────────────────────────────────────────────────────────
@@ -303,7 +322,7 @@ export class Orchestrator extends EventEmitter {
         case 'browser_download':  result = await this.browser.download(p.url, p.path); break;
 
         // Screen actions
-        case 'screenshot':        result = await this.screen.capture(p); break;
+        case 'screenshot':        result = await this._pcAction({ type: 'screenshot', quality: p.quality, scale: p.scale }, () => this.screen.capture(p)); break;
         case 'screen_region':     result = await this.screen.captureRegion(p.x, p.y, p.width, p.height); break;
         case 'screen_ocr':        result = await this.screen.ocr(p.path || p.image); break;
         case 'screen_find_text':  result = await this.screen.findTextOnScreen(p.text, p); break;
@@ -333,20 +352,22 @@ export class Orchestrator extends EventEmitter {
         case 'http_request':      result = await this.filesystem.httpRequest(p.method, p.url, p); break;
         case 'download':          result = await this.filesystem.download(p.url, p.path, p); break;
 
-        // Platform actions (mouse, keyboard, system)
-        case 'mouse_move':        result = await platform.mouseMove(p.x, p.y); break;
-        case 'mouse_click':       result = await platform.mouseClick(p.x, p.y, p.button); break;
-        case 'mouse_scroll':      result = await platform.mouseScroll(p.x, p.y, p.clicks); break;
-        case 'keyboard_type':     result = await platform.keyboardType(p.text); break;
-        case 'keyboard_press':    result = await platform.keyboardPress(p.key); break;
-        case 'get_cursor':        result = await platform.getCursor(); break;
-        case 'list_windows':      result = await platform.listWindows(); break;
+        // Platform actions (mouse, keyboard, system) — van al bridge remoto
+        // (opencode-core/pc-agent.mjs) cuando hay uno conectado; si no, se
+        // ejecutan en el proceso local (uso de OpenCode 100% local, sin bridge).
+        case 'mouse_move':        result = await this._pcAction({ type: 'mouse_move', x: p.x, y: p.y }, () => platform.mouseMove(p.x, p.y)); break;
+        case 'mouse_click':       result = await this._pcAction({ type: 'mouse_click', x: p.x, y: p.y, button: p.button }, () => platform.mouseClick(p.x, p.y, p.button)); break;
+        case 'mouse_scroll':      result = await this._pcAction({ type: 'mouse_scroll', x: p.x, y: p.y, clicks: p.clicks }, () => platform.mouseScroll(p.x, p.y, p.clicks)); break;
+        case 'keyboard_type':     result = await this._pcAction({ type: 'keyboard_type', text: p.text }, () => platform.keyboardType(p.text)); break;
+        case 'keyboard_press':    result = await this._pcAction({ type: 'keyboard_press', key: p.key }, () => platform.keyboardPress(p.key)); break;
+        case 'get_cursor':        result = await this._pcAction({ type: 'get_cursor' }, () => platform.getCursor()); break;
+        case 'list_windows':      result = await this._pcAction({ type: 'list_windows' }, () => platform.listWindows()); break;
         case 'list_processes':    result = await platform.listProcesses(); break;
-        case 'sysinfo':           result = await platform.getSystemInfo(); break;
-        case 'open_url':          result = await platform.openUrl(p.url); break;
-        case 'open_file':         result = await platform.openFile(p.path); break;
-        case 'get_clipboard':     result = await platform.getClipboard(); break;
-        case 'set_clipboard':     result = await platform.setClipboard(p.text); break;
+        case 'sysinfo':           result = await this._pcAction({ type: 'sysinfo' }, () => platform.getSystemInfo()); break;
+        case 'open_url':          result = await this._pcAction({ type: 'open_url', url: p.url }, () => platform.openUrl(p.url)); break;
+        case 'open_file':         result = await this._pcAction({ type: 'open_file', path: p.path }, () => platform.openFile(p.path)); break;
+        case 'get_clipboard':     result = await this._pcAction({ type: 'get_clipboard' }, () => platform.getClipboard()); break;
+        case 'set_clipboard':     result = await this._pcAction({ type: 'set_clipboard', text: p.text }, () => platform.setClipboard(p.text)); break;
         case 'notify':            result = await platform.notify(p.title || 'Operator', p.message); break;
 
         // Meta actions
@@ -396,8 +417,8 @@ export class Orchestrator extends EventEmitter {
     // Try screenshot if no browser
     if (!state.description) {
       try {
-        const ss = await this.screen.capture({ quality: 50, scale: 0.75 });
-        if (ss.ok) {
+        const ss = await this._pcAction({ type: 'screenshot', quality: 50, scale: 0.75 }, () => this.screen.capture({ quality: 50, scale: 0.75 }));
+        if (ss?.ok !== false && (ss?.ok || ss?.base64)) {
           state.description = await this.brain?.describeImage(ss.base64) || 'Screenshot captured';
           state.screenshot = ss.file;
         }
@@ -406,8 +427,8 @@ export class Orchestrator extends EventEmitter {
 
     // Cursor position
     try {
-      const cursor = await platform.getCursor();
-      if (cursor.ok) state.cursor = `${cursor.x},${cursor.y}`;
+      const cursor = await this._pcAction({ type: 'get_cursor' }, () => platform.getCursor());
+      if (cursor?.ok) state.cursor = `${cursor.x},${cursor.y}`;
     } catch {}
 
     return state;

@@ -28,6 +28,18 @@ fi
 # Ensure data directory exists
 mkdir -p /app/data /app/screenshots /app/logs
 
+# ─── PC bridge (control remoto de la PC via pc-agent.mjs) ───────────────────
+# agent-server.mjs: hub WebSocket público donde se conecta pc-agent.mjs (tu PC)
+# y también el relay HTTP (POST /agents/:id) que operator/bridge-client.mjs usa
+# (vía localhost, mismo contenedor) para mandar mouse/teclado/comandos a la PC
+# conectada y recibir pantalla.
+export AGENT_WS_PORT="${AGENT_WS_PORT:-21291}"
+export AGENT_SERVER_URL="${AGENT_SERVER_URL:-ws://localhost:${AGENT_WS_PORT}/agent}"
+export AGENT_SERVER_HTTP_URL="${AGENT_SERVER_HTTP_URL:-http://localhost:${AGENT_WS_PORT}}"
+
+echo "🔌 Starting Agent Server (PC hub) on port ${AGENT_WS_PORT}..."
+node opencode-core/agent-server.mjs &
+
 echo ""
 echo "📡 Starting Operator Pro server..."
 echo "   Port: ${OPERATOR_PORT:-3000}"
