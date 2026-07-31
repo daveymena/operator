@@ -23,32 +23,37 @@ const ZEN_API_KEY = process.env.OPENCODE_ZEN_API_KEY || (() => {
 })();
 
 const OPENCODE_ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
-const OPENCODE_ZEN_MODEL = "deepseek-v4-flash-free";
+const OPENCODE_ZEN_MODELS = ["deepseek-v4-flash-free", "mimo"];
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function callOpenCodeZen(prompt) {
+const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY || "";
+const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
+const CEREBRAS_MODEL = "llama3.1-8b";
+
+async function callCerebras(prompt, systemMsg) {
+  if (!CEREBRAS_API_KEY) return null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const resp = await fetch(OPENCODE_ZEN_URL, {
+      const resp = await fetch(CEREBRAS_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + ZEN_API_KEY
+          "Authorization": "Bearer " + CEREBRAS_API_KEY
         },
         body: JSON.stringify({
-          model: OPENCODE_ZEN_MODEL,
+          model: CEREBRAS_MODEL,
           messages: [
-            { role: "system", content: "Responde siempre con una accion clara y concisa. No incluyas pensamiento ni razonamiento, solo la respuesta final." },
+            { role: "system", content: systemMsg || "Responde de forma clara y concisa." },
             { role: "user", content: prompt }
           ],
-          max_tokens: 8192,
+          max_tokens: 2048,
           stream: false
         }),
-        signal: AbortSignal.timeout(120000),
+        signal: AbortSignal.timeout(30000),
       });
       if (!resp.ok) {
-        console.log("  [AI-Zen] HTTP " + resp.status + ", reintento " + (attempt + 1));
+        console.log("  [AI-Cerebras] HTTP " + resp.status + ", reintento " + (attempt + 1));
         await delay(2000);
         continue;
       }
@@ -56,8 +61,58 @@ async function callOpenCodeZen(prompt) {
       const content = data.choices?.[0]?.message?.content || "";
       if (content.trim()) return content.trim();
     } catch (e) {
-      console.log("  [AI-Zen] Error: " + e.message.substring(0, 80) + ", reintento " + (attempt + 1));
+      console.log("  [AI-Cerebras] Error: " + e.message.substring(0, 60) + ", reintento " + (attempt + 1));
       await delay(2000);
+    }
+  }
+  return null;
+}
+
+async function callOpenCodeZen(prompt, systemMsg, imageBase64 = null) {
+  const models = imageBase64 ? ["mimo"] : OPENCODE_ZEN_MODELS;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const messages = [
+          { role: "system", content: systemMsg || "Responde siempre con una accion clara y concisa. No incluyas pensamiento ni razonamiento, solo la respuesta final." }
+        ];
+        if (imageBase64) {
+          messages.push({
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: `data:image/png;base64,${imageBase64}` } }
+            ]
+          });
+        } else {
+          messages.push({ role: "user", content: prompt });
+        }
+        const resp = await fetch(OPENCODE_ZEN_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + ZEN_API_KEY
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            max_tokens: 8192,
+            stream: false
+          }),
+          signal: AbortSignal.timeout(120000),
+        });
+        if (!resp.ok) {
+          console.log("  [AI-Zen/" + model + "] HTTP " + resp.status + ", reintento " + (attempt + 1));
+          await delay(2000);
+          continue;
+        }
+        const data = await resp.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        if (content.trim()) return content.trim();
+      } catch (e) {
+        console.log("  [AI-Zen/" + model + "] Error: " + e.message.substring(0, 60) + ", reintento " + (attempt + 1));
+        await delay(2000);
+      }
     }
   }
   return null;
@@ -108,6 +163,8 @@ async function callOllama(model, prompt, imageBase64 = null) {
 
 
 async function callVision(prompt, imageBase64) {
+  const zen = await callOpenCodeZen(prompt, null, imageBase64);
+  if (zen) return zen;
   const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (geminiKey) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
@@ -137,25 +194,30 @@ async function callVision(prompt, imageBase64) {
     } catch (e) {}
   }
   
-  // Fallback a Moondream local de Ollama si no hay API Key o falla
   return await callOllama(VISION_MODEL, prompt, imageBase64);
 }
 
 async function callReason(prompt) {
   const zen = await callOpenCodeZen(prompt);
   if (zen) return zen;
+  const cerebras = await callCerebras(prompt, "Eres un asistente de razonamiento. Responde de forma clara y concisa.");
+  if (cerebras) return cerebras;
   return await callOllama(REASON_MODEL, prompt);
 }
 
 async function callFast(prompt) {
   const zen = await callOpenCodeZen(prompt);
   if (zen) return zen;
+  const cerebras = await callCerebras(prompt, "Responde de forma clara y concisa.");
+  if (cerebras) return cerebras;
   return await callOllama(FAST_MODEL, prompt);
 }
 
 async function askAI(page, prompt) {
   const zen = await callOpenCodeZen(prompt);
   if (zen) return zen;
+  const cerebras = await callCerebras(prompt, "Responde de forma clara y concisa.");
+  if (cerebras) return cerebras;
   return await callOllama(FAST_MODEL, prompt);
 }
 

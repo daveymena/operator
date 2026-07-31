@@ -7,7 +7,7 @@ const { solveCaptchaMultiRound } = require("./captcha_solver_final.js");
 const { agentLoop } = require("./vision_agent.js");
 
 const FORM_URL =
-  "https://docs.google.com/forms/d/e/1FAIpQLSfd9f3bIBYdrMps4YlASFWr2Zsg81eiIsXF8wtq2bZ_xaSsYA/viewform";
+  "https://docs.google.com/forms/d/e/1FAIpQLSfd9f3bIBYdrMps4YlASFWr2Zsg81eiIsXF8wtq2bZ_xaSsYA/viewform?hl=es";
 
 const FIXED = {
   correo: "daveymena16@gmail.com",
@@ -24,7 +24,7 @@ const FIXED = {
 const MAT = {
   "1057263-CBL DROP 100M TRAD OPTI/FAST/SLM SC/APC": "1",
   "1023342-CONECTOR 35400049 SC/APC FTTH FRKW": "3",  // Conectores: 3-4
-  "501115-CHAZO PLASTICO DE 3/8 X 2": "4",
+  "501115-CHAZO PLASTICO DE 3/8 X 2": "10",
   "501024-AMARRE PLASTICO 30 CM BLANCO": "5",
   "1059368-CONECTOR RJ45CAT6 INDOOR VEL SUP 500MBPS": "4",  // RJ45: 4
   "501120-CINTA ADHESIVA AISLANTE COLOR NEGRO": "1",
@@ -49,8 +49,21 @@ const FIELD_MAP = {
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+async function promptUser(msg) {
+  return new Promise((resolve) => {
+    console.log(msg);
+    process.stdout.write("  > ");
+    const stdin = process.stdin;
+    stdin.resume();
+    stdin.once("data", (data) => {
+      stdin.pause();
+      resolve(data.toString().trim());
+    });
+  });
+}
+
 function saveOrders(orders) {
-  const p = path.join(__dirname, "ordenes_procesadas.json");
+  const p = path.join(DATA_DIR, "ordenes_procesadas.json");
   fs.writeFileSync(p, JSON.stringify(orders, null, 2), "utf8");
   console.log(`  💾 JSON actualizado: ${orders.filter(o => o.enviado).length} enviadas`);
 }
@@ -284,12 +297,7 @@ function matchField(fieldTitle, order) {
     ft.includes("celular")
   )
     return { type: "text", value: FIXED.telefono };
-  if (ft.includes("serial instalado") || ft.includes("serial")) {
-    const match = ft.match(/serial\s*instalado\s*(\d+)/i);
-    const idx = match ? parseInt(match[1]) : 1;
-    const seriales = order.seriales || [];
-    const val = seriales[idx - 1] || "";
-    if (val) return { type: "text", value: val };
+  if (ft.includes("serial instalado") || ft.includes("serial") || ft.includes("mac") || ft.includes("deco")) {
     return null;
   }
   return null;
@@ -300,26 +308,24 @@ async function fillFieldsByVision(page, order, isTest) {
   if (!page._serialDecoFilled) page._serialDecoFilled = false;
 
   const fields = await getFields(page);
-  if (isTest) {
-    console.log("  📋 CAMPOS en esta pagina:");
-    fields.forEach((f) =>
-      console.log(
-        "    [" +
-          f.idx +
-          '] "' +
-          f.rawTitle +
-          '" tipo=' +
-          (f.hasSelect
-            ? "dropdown"
-            : f.hasInput
-              ? "text"
-              : f.radios.length
-                ? "radio"
-                : "?") +
-          (f.radios.length ? " [" + f.radios.join(",") + "]" : ""),
-      ),
-    );
-  }
+  console.log("  📋 CAMPOS en pagina " + (page._pageCounter || '?') + ":");
+  fields.forEach((f) =>
+    console.log(
+      "    [" +
+        f.idx +
+        '] "' +
+        f.rawTitle +
+        '" tipo=' +
+        (f.hasSelect
+          ? "dropdown"
+          : f.hasInput
+            ? "text"
+            : f.radios.length
+              ? "radio"
+              : "?") +
+        (f.radios.length ? " [" + f.radios.join(",") + "]" : ""),
+    ),
+  );
   let filled = 0,
     total = 0;
   for (const f of fields) {
@@ -331,8 +337,10 @@ async function fillFieldsByVision(page, order, isTest) {
       ) {
         total++;
         const matched = matchField(f.title, order);
-        if (matched && (await selectDropdown(page, f.idx, matched.value)))
+        if (matched && (await selectDropdown(page, f.idx, matched.value))) {
+          console.log("    ✅ [" + f.idx + "] Dropdown \"" + f.rawTitle.substring(0, 30) + "\" = \"" + matched.value + "\"");
           filled++;
+        }
       }
       continue;
     }
@@ -350,74 +358,91 @@ async function fillFieldsByVision(page, order, isTest) {
           return inp ? inp.value.trim() : "";
         }, f.idx);
         if (String(currentVal) === String(matched.value)) {
+          console.log("    ✅ [" + f.idx + "] \"" + f.rawTitle.substring(0, 30) + "\" ya tiene \"" + matched.value + "\"");
           filled++;
-          continue; // Ya tiene el valor correcto, no tocar
+          continue;
         }
         if (await fillText(page, f.idx, matched.value)) {
+          console.log("    ✅ [" + f.idx + "] \"" + f.rawTitle.substring(0, 30) + "\" = \"" + matched.value + "\"");
           filled++;
           continue;
         }
       }
-      // Búsqueda específica de Seriales (solo deco seriales del usuario)
+      // Seriales: extraer de notas o preguntar si hay cambio de equipo
       const rawLower = f.rawTitle.toLowerCase();
       if (rawLower.includes("serial") || rawLower.includes("mac") || rawLower.includes("deco")) {
-        const seriales = order.seriales || [];
-        if (seriales.length > 0) {
-          const idxMatch = rawLower.match(/serial\s*instalado\s*(\d+)/i);
-          const idx = idxMatch ? parseInt(idxMatch[1]) - 1 : 0;
-          if (idx < seriales.length && seriales[idx]) {
-            if (await fillText(page, f.idx, seriales[idx])) {
+        const notes = (order.notes || order.closureNotes || order.closure_notes || '').toLowerCase();
+        const serialMatch = notes.match(/(?:serial|seril)\s*[:]?\s*([A-Za-z0-9]{6,})/i);
+        const userSerial = serialMatch ? serialMatch[1].toUpperCase() : null;
+        if (userSerial) {
+          console.log("  [SERIAL] Encontrado en notas: " + userSerial);
+          if (await fillText(page, f.idx, userSerial)) {
+            console.log("    ✅ [" + f.idx + "] Serial = \"" + userSerial + "\"");
+            filled++;
+            continue;
+          }
+        }
+        const hayCambio = notes.includes('cambio') || notes.includes('cambió') || notes.includes('reemplazo') || notes.includes('defectos') || notes.includes('dañado');
+        if (!userSerial && hayCambio) {
+          const typed = await promptUser("  [SERIAL] Escribe el serial para \"" + f.rawTitle + "\" (Enter para saltar):");
+          if (typed) {
+            if (await fillText(page, f.idx, typed)) {
               filled++;
               continue;
             }
           }
         }
+        console.log("  [SERIAL] Saltando (no hay serial en notas ni cambio de equipo)");
+        continue;
       }
 
-      // Intentar llenar como material (usando datos dinámicos del JSON si existen, o fallback)
-      let matFilled = false;
+       // Materiales FTTH - SOLO los 8 items fijos + cable drop condicional
+       const notes = (order.notes || '').toLowerCase();
+       const usaFibra = notes.includes('fibra') || notes.includes('cable drop') || notes.includes('cambio de acometida') || notes.includes('desenganch') || notes.includes('sin servicio') || notes.includes('no prende') || notes.includes('no emite luz') || notes.includes('sin navegacion');
+       const matchLongitud = notes.match(/fibra\s*de\s*(\d+)/) || notes.match(/(\d+)\s*(m|metro)/);
+       const longitudFibra = matchLongitud ? parseInt(matchLongitud[1], 10) : 100;
+       const matchChazos = notes.match(/(\d+)\s*chazo/i) || notes.match(/chazo\s*(\d+)/i);
+       const cantidadChazos = matchChazos ? parseInt(matchChazos[1], 10) : 10;
+       const rawUpper = f.rawTitle.toUpperCase();
+       let matQty = null;
 
-      // Función para obtener valor aleatorio de un array
-      const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+       // Mapeo exacto por codigo de producto en el titulo del campo
+       if (rawUpper.includes('1023342-CONECTOR') && rawUpper.includes('SC/APC')) {
+         matQty = "3";
+       } else if (rawUpper.includes('1059368-CONECTOR RJ45CAT6') || rawUpper.includes('1059368-CONECTOR RJ45')) {
+         matQty = "4";
+       } else if (rawUpper.includes('501024-AMARRE PLASTICO 30 CM')) {
+         matQty = "5";
+       } else if (rawUpper.includes('501115-CHAZO PLASTICO DE 3/8')) {
+         matQty = String(cantidadChazos);
+      } else if (rawUpper.includes('501120-CINTA ADHESIVA AISLANTE')) {
+        matQty = "1";
+      } else if (rawUpper.includes('1049591-ROSETA OPT') || rawUpper.includes('1049591-ROSETA')) {
+        matQty = "1";
+      } else if (rawUpper.includes('1025159-STICKER RED INTERNA')) {
+        matQty = "1";
+      } else if ((rawUpper.includes('1057263-CBL DROP 100M') || rawUpper.includes('1057263-CABLE DROP 100M')) && usaFibra && longitudFibra === 100) {
+        matQty = "1";
+      } else if ((rawUpper.includes('1057264-CBL DROP 150M') || rawUpper.includes('1057264-CABLE DROP 150M')) && usaFibra && longitudFibra === 150) {
+        matQty = "1";
+      } else if ((rawUpper.includes('1057267-CBL DROP 300M') || rawUpper.includes('1057267-CABLE DROP 300M')) && usaFibra && longitudFibra === 300) {
+        matQty = "1";
+      } else if ((rawUpper.includes('1057266-CBL DROP 250M') || rawUpper.includes('1057266-CABLE DROP 250M')) && usaFibra && longitudFibra === 250) {
+        matQty = "1";
+      } else if ((rawUpper.includes('1057065-CABLE') && rawUpper.includes('100M') && rawUpper.includes('FASTCONECT')) && usaFibra && longitudFibra === 100) {
+        matQty = "1";
+      } else if (rawUpper.includes('1048405-ANCLAJE DROP FTTH') && (notes.includes('fibra') || notes.includes('cambio de acometida'))) {
+        matQty = "1";
+      }
 
-      // Análisis de notas para determinar materiales
-      const notes = (order.notes || '').toLowerCase();
-
-      // Detectar tipo de trabajo en las notas
-      const cambioFibra = notes.includes('cambio de fibra') || notes.includes('fibra óptica') || notes.includes('fibra optica') || notes.includes('fibra de');
-      const cambioONT = notes.includes('cambio de ont') || notes.includes('cambió la ont') || notes.includes('ont desenganchada');
-      const cambioDeco = notes.includes('cambio de deco') || notes.includes('cambió el deco') || notes.includes('instal') && notes.includes('deco');
-      const tieneConectores = notes.includes('conectores') || notes.includes('conector');
-      const tieneCables = notes.includes('cables') || notes.includes('cable') || notes.includes('utp');
-
-      // Materiales FTTH - solo fibra óptica
-      const dynamicMaterials = {
-        // Conectores mecánicos de fibra: 3-4 cuando hay trabajo físico
-        "conector": (cambioONT || tieneConectores) ? getRandom(["3", "4"]) : null,
-        // RJ45: 4 cuando hay cables de red
-        "rj45": tieneCables ? "4" : null,
-        // Botas de RJ45: junto con RJ45
-        "bota": tieneCables ? getRandom(["3", "4"]) : null,
-        // Fibra Drop: SOLO si dice "cambio de fibra" o "fibra de Xm" - siempre 1
-        "fibra": cambioFibra ? "1" : null,
-        // Tensores: 3-5 cuando hay fibra
-        "tensor": cambioFibra ? getRandom(["3", "4", "5"]) : null,
-        // Cable UTP: 10-30 metros cuando hay cables
-        "cable": tieneCables ? getRandom(["10", "15", "20", "25", "30"]) : null,
-        // Control de deco: 1 cuando se instala/arregla deco
-        "control": cambioDeco ? "1" : null
-      };
-
-      for (const [matKey, qty] of Object.entries(dynamicMaterials)) {
-        if (qty && rawLower.includes(matKey)) {
-          if (await fillText(page, f.idx, qty)) {
-            filled++;
-            matFilled = true;
-            break;
-          }
+      if (matQty) {
+        if (await fillText(page, f.idx, matQty)) {
+          console.log("    ✅ [" + f.idx + "] Material \"" + f.rawTitle.substring(0, 50) + "\" = " + matQty);
+          filled++;
+          continue;
         }
       }
-      if (matFilled) continue;
+      console.log("    ⏭ [" + f.idx + "] \"" + f.rawTitle.substring(0, 50) + "\" - no match");
       continue;
     }
     if (f.radios.length > 0) {
@@ -431,7 +456,7 @@ async function fillFieldsByVision(page, order, isTest) {
         }
         return "";
       }, f.idx);
-      if (cur) continue;
+      if (cur) { console.log("    ✅ [" + f.idx + "] Radio ya seleccionado: " + cur); continue; }
       total++;
       const matched = matchField(f.title, order);
       const val = matched
@@ -439,7 +464,10 @@ async function fillFieldsByVision(page, order, isTest) {
         : f.radios.includes("Si")
           ? "Si"
           : f.radios[0];
-      if (await selectRadio(page, f.idx, val)) filled++;
+      if (await selectRadio(page, f.idx, val)) {
+        console.log("    ✅ [" + f.idx + "] Radio \"" + f.rawTitle.substring(0, 30) + "\" = " + val);
+        filled++;
+      }
     }
   }
   return { filled, total, fields };
@@ -449,9 +477,10 @@ async function clickBtn(page, text) {
   for (let i = 0; i < 10; i++) {
     try {
       const ok = await page.evaluate((t) => {
-        const btns = document.querySelectorAll('[role="button"]');
+        const btns = document.querySelectorAll('[role="button"], button, input[type="submit"], span');
         for (const b of btns) {
-          if (b.innerText.trim() === t) {
+          const btnText = (b.innerText || b.value || b.getAttribute('aria-label') || "").trim();
+          if (btnText === t || btnText.toLowerCase().includes(t.toLowerCase())) {
             b.scrollIntoView({ block: "center" });
             b.click();
             return true;
@@ -460,7 +489,7 @@ async function clickBtn(page, text) {
         return false;
       }, text);
       if (ok) {
-        await delay(500);
+        await delay(800);
         return true;
       }
     } catch (_) {}
@@ -496,7 +525,7 @@ async function processOrder(browser, page, order, idx, isTest, allOrdersRef) {
 
   const logMsg = `\n[${idx + 1}/30] OT ${order.ot} | ${order.ciudad} | Mat: ${order.aplicaMaterial} | Tipo: ${order.tipo || order.tipo_trabajo || 'N/A'} | Seriales: ${order.serial_ont||'N/A'}, ${order.serial_deco||'N/A'}`;
   console.log(logMsg);
-  fs.appendFileSync(path.join(__dirname, "reporte_diario.txt"), logMsg + "\n");
+  fs.appendFileSync(path.join(DATA_DIR, "reporte_diario.txt"), logMsg + "\n");
 
   try {
     // ---- ABRIR FORMULARIO LIMPIO ---- #
@@ -537,37 +566,49 @@ async function processOrder(browser, page, order, idx, isTest, allOrdersRef) {
 
     if (completado) {
       console.log("  ✅ ORDEN COMPLETADA Y ENVIADA!");
-      fs.appendFileSync(path.join(__dirname, "reporte_diario.txt"), "  ✅ ORDEN COMPLETADA Y ENVIADA!\n");
-      // Marcar como enviado en el JSON
+      fs.appendFileSync(path.join(DATA_DIR, "reporte_diario.txt"), "  ✅ ORDEN COMPLETADA Y ENVIADA!\n");
       order.enviado = true;
       saveOrders(allOrdersRef);
+      const { sendCertification } = require("./email_notify.js");
+      await sendCertification(order);
     } else {
       // Verificar una última vez si se envió
       const body = await page.evaluate(() => document.body.innerText.substring(0, 500)).catch(() => "");
       if (body.includes("registrada") || body.includes("Respuesta enviada") || body.includes("hemos registrado") || body.includes("Muchas gracias") || body.includes("Enviar otra respuesta")) {
         console.log("  ✅ ENVIADO (confirmado por texto)!");
-        fs.appendFileSync(path.join(__dirname, "reporte_diario.txt"), "  ✅ ENVIADO (confirmado por texto)!\n");
+        fs.appendFileSync(path.join(DATA_DIR, "reporte_diario.txt"), "  ✅ ENVIADO (confirmado por texto)!\n");
         // Marcar como enviado en el JSON
         order.enviado = true;
         saveOrders(allOrdersRef);
       } else {
         console.log("  ❌ No se pudo completar esta orden");
-        fs.appendFileSync(path.join(__dirname, "reporte_diario.txt"), "  ❌ No se pudo completar esta orden\n");
+        fs.appendFileSync(path.join(DATA_DIR, "reporte_diario.txt"), "  ❌ No se pudo completar esta orden\n");
       }
     }
 
     if (isTest) await page.screenshot({ path: "test_result_" + idx + ".png" });
   } catch (e) {
     console.error("  ❌ ERROR: " + (e.message || e).substring(0, 200));
-    fs.appendFileSync(path.join(__dirname, "reporte_diario.txt"), "  ❌ ERROR: " + (e.message || e).substring(0, 200) + "\n");
+    fs.appendFileSync(path.join(DATA_DIR, "reporte_diario.txt"), "  ❌ ERROR: " + (e.message || e).substring(0, 200) + "\n");
     if (isTest)
       await page.screenshot({ path: "error_" + idx + ".png" }).catch(() => {});
   }
 }
 
-const chromePath = require("fs").existsSync("/mnt") ? "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe" : "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const EMAIL = "daveymena16@gmail.com";
-const PASSWORD = "6715320Dvd.";
+const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || (() => {
+  const home = require("os").homedir();
+  const cache = require("path").join(home, ".cache", "puppeteer", "chrome");
+  try {
+    const dirs = require("fs").readdirSync(cache).filter(d => d.startsWith("linux-")).sort().reverse();
+    if (dirs.length > 0) {
+      const bin = require("path").join(cache, dirs[0], "chrome-linux64", "chrome");
+      if (require("fs").existsSync(bin)) return bin;
+    }
+  } catch {}
+  return "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
+})();
+const EMAIL = process.env.CLARO_EMAIL || "daveymena16@gmail.com";
+const PASSWORD = process.env.CLARO_PASSWORD || "6715320Dvd.";
 
 async function ensureSession(page) {
   await page.goto("https://www.google.com", { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -604,12 +645,14 @@ async function ensureSession(page) {
   return true;
 }
 
+const DATA_DIR = process.env.CLARO_DATA_DIR || __dirname;
+
 async function main() {
-  fs.writeFileSync(path.join(__dirname, "reporte_diario.txt"), "=== REPORTE DIARIO DE ORDENES ===\nFecha: " + new Date().toLocaleString() + "\n");
+  fs.writeFileSync(path.join(DATA_DIR, "reporte_diario.txt"), "=== REPORTE DIARIO DE ORDENES ===\nFecha: " + new Date().toLocaleString() + "\n");
 
   const isTest = process.argv.includes("--test");
   let allOrders = JSON.parse(
-    fs.readFileSync(require("path").join(__dirname, "ordenes_procesadas.json"), "utf8"),
+    fs.readFileSync(require("path").join(DATA_DIR, "ordenes_procesadas.json"), "utf8"),
   );
   // Filtrar solo las NO enviadas para evitar duplicados
   let orders = allOrders.filter(o => !o.enviado && !o.nueva);
@@ -622,25 +665,39 @@ async function main() {
   console.log(isTest ? "TEST 1 orden" : orders.length + " ordenes pendientes");
 
   const profileDir = path.join(__dirname, "puppeteer_profile");
-  console.log("🚀 Lanzando Chrome con perfil persistente (sesion Gmail)...");
+  // Usar perfil FRESCO (renombrar el viejo para mantenerlo de backup)
+  const freshDir = path.join(__dirname, "puppeteer_profile_" + Date.now());
+  try { require("fs").mkdirSync(freshDir, { recursive: true }); } catch (e) {}
+  const useProxy = process.env.CLARO_PROXY === 'tor';
+  if (useProxy) console.log("🚀 Usando Tor proxy (SOCKS5 localhost:9050)...");
+  console.log("🚀 Lanzando Chrome con perfil fresco (sin sesion cacheada)...");
+  const isHeadless = process.env.CLARO_HEADLESS === 'true';
+  const launchArgs = [
+    ...(isHeadless ? [`--window-size=1920,1080`] : [`--start-maximized`]),
+    `--disable-blink-features=AutomationControlled`,
+    `--no-first-run`,
+    `--no-default-browser-check`,
+    `--no-sandbox`,
+    `--remote-debugging-port=${process.env.CLARO_DEBUG_PORT || '0'}`,
+    `--disable-features=ChromeWhatsNewUI`,
+    `--disable-background-networking`,
+    `--disable-sync`,
+    `--disable-translate`,
+    `--disable-default-apps`,
+    `--no-pings`,
+    `--lang=es-ES`,
+    `--incognito`,
+  ];
+  if (useProxy) {
+    launchArgs.push(`--proxy-server=socks5://127.0.0.1:9050`);
+  }
   const browser = await puppeteer.launch({
     executablePath: chromePath,
-    userDataDir: profileDir,
-    headless: false,
-    args: [
-      `--start-maximized`,
-      `--disable-blink-features=AutomationControlled`,
-      `--no-first-run`,
-      `--no-default-browser-check`,
-      `--no-sandbox`,
-      `--remote-debugging-port=9224`,
-    ],
+    userDataDir: freshDir,
+    headless: isHeadless,
+    args: launchArgs,
     defaultViewport: null,
   });
-
-  // Login a Gmail en la pagina principal
-  const mainPage = (await browser.pages())[0];
-  await ensureSession(mainPage);
 
   async function setupPage(p) {
     p.setDefaultTimeout(30000);
@@ -676,7 +733,7 @@ async function main() {
         await processOrder(browser, p, order, globalIdx, isTest, allOrders);
       } catch (e) {
         console.error("  ❌ Error en orden " + order.ot + ": " + (e.message || e).substring(0, 200));
-        fs.appendFileSync(path.join(__dirname, "reporte_diario.txt"), "  ❌ ERROR PARALELO: " + (e.message || e).substring(0, 200) + "\n");
+        fs.appendFileSync(path.join(DATA_DIR, "reporte_diario.txt"), "  ❌ ERROR PARALELO: " + (e.message || e).substring(0, 200) + "\n");
       } finally {
         try { await p.close(); } catch (_) {}
       }

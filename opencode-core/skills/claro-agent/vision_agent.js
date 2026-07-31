@@ -1,5 +1,8 @@
 const { solveCaptchaMultiRound } = require("./captcha_solver_final.js");
 const { askAI, executeAIAction } = require("./ai_supervisor.js");
+const http = require("http");
+const https = require("https");
+const querystring = require("querystring");
 
 function delay(ms) {
   return new Promise(r => setTimeout(r, ms + Math.random() * 100));
@@ -17,9 +20,9 @@ async function clickBtn(page, text) {
   for (let i = 0; i < 10; i++) {
     try {
       const ok = await page.evaluate((t) => {
-        const btns = document.querySelectorAll('[role="button"], button, input[type="submit"]');
+        const btns = document.querySelectorAll('[role="button"], button, input[type="submit"], span');
         for (const b of btns) {
-          const btnText = (b.innerText || b.value || "").trim().toLowerCase();
+          const btnText = (b.innerText || b.value || b.getAttribute('aria-label') || "").trim().toLowerCase();
           if (btnText === t.toLowerCase() || btnText.includes(t.toLowerCase())) {
             if (b.offsetWidth > 0 && b.offsetHeight > 0 && window.getComputedStyle(b).visibility !== 'hidden') {
               b.scrollIntoView({block: "center"});
@@ -54,10 +57,20 @@ async function agentLoop(page, order, fillFieldsFn) {
 
   async function findEnviarBtn() {
     return await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('[role="button"], button, input[type="submit"], span'));
-      return btns.some(b => {
-        const txt = (b.innerText || b.value || "").trim().toLowerCase();
-        return txt === "enviar" || txt === "submit" || txt.includes("enviar");
+      const sel = '[role="button"], button, input[type="submit"], span, div[role="button"]';
+      return Array.from(document.querySelectorAll(sel)).some(b => {
+        const txt = (b.innerText || b.value || b.getAttribute('aria-label') || "").trim().toLowerCase();
+        return txt === "enviar" || txt === "submit" || txt.includes("enviar") || txt === "senden" || txt.includes("senden");
+      });
+    }).catch(() => false);
+  }
+
+  async function findWeiterBtn() {
+    return await page.evaluate(() => {
+      const sel = '[role="button"], button, input[type="submit"], span, div[role="button"]';
+      return Array.from(document.querySelectorAll(sel)).some(b => {
+        const txt = (b.innerText || b.value || b.getAttribute('aria-label') || "").trim().toLowerCase();
+        return txt === "siguiente" || txt === "next" || txt.includes("siguiente") || txt === "weiter" || txt.includes("weiter");
       });
     }).catch(() => false);
   }
@@ -91,10 +104,13 @@ async function agentLoop(page, order, fillFieldsFn) {
       const noFormFields = await page.evaluate(() => document.querySelectorAll('input.whsOnd, input[type="text"], input[type="email"]').length === 0).catch(() => false);
       if (noFormFields) {
         const body2 = await page.evaluate(() => document.body.innerText.substring(0, 300)).catch(() => "");
-        if (!body2.includes("Correo electrónico") && !body2.includes("Cuenta") && !body2.includes("Orden")) {
+        // Verificar que NO haya captcha activo antes de asumir enviado
+        const hasCaptchaChallenge = page.frames().some(f => f.url().includes('bframe'));
+        if (!body2.includes("Correo electrónico") && !body2.includes("Cuenta") && !body2.includes("Orden") && !hasCaptchaChallenge) {
           console.log("  [VA] No hay campos, asumiendo enviado.");
           return true;
         }
+        if (hasCaptchaChallenge) console.log("  [VA] Captcha activo detectado, no asumir enviado");
       }
     }
 
@@ -102,8 +118,10 @@ async function agentLoop(page, order, fillFieldsFn) {
       const iframe = document.querySelector('iframe[title*="recaptcha"]');
       return iframe && iframe.offsetWidth > 0 && iframe.offsetHeight > 0 && window.getComputedStyle(iframe).visibility !== 'hidden';
     }).catch(() => false);
+    const bframeActive = page.frames().some(f => f.url().includes('bframe'));
 
-    if (captchaVisible) {
+    if (captchaVisible || bframeActive) {
+      if (bframeActive) console.log("  [VA] Bframe activo detectado");
       console.log("  [VA] Captcha detectado (intento " + (captchaFails + 1) + ")...");
       const solved = await solveCaptchaMultiRound(page);
       if (solved) {
@@ -160,11 +178,13 @@ async function agentLoop(page, order, fillFieldsFn) {
 
     if (itemsExist) {
       console.log("  [VA] Llenando campos...");
+      if (page._pageCounter) page._pageCounter++;
       await fillFieldsFn(page, order, false);
       noProgressCount = 0;
     }
 
     const pageNum = await getPageNumber(page);
+    if (pageNum) page._pageCounter = pageNum.current;
     const isLastPage = pageNum && pageNum.current >= pageNum.total;
 
     if (!itemsExist && isLastPage && !submitAttempted) {
@@ -188,48 +208,65 @@ async function agentLoop(page, order, fillFieldsFn) {
     const envBtn = await findEnviarBtn();
     if (envBtn && !submitAttempted) {
       submitAttempted = true; // BLOQUEAR duplicados
-      // Intentar envio directo (bypass captcha)
+      // Intentar envio directo desde Node.js (bypass captcha, sin restricciones del navegador)
       console.log("  [VA] Intentando envio directo bypass captcha...");
-      const directOk = await page.evaluate(async () => {
+      const formData = await page.evaluate(() => {
         const form = document.querySelector('form');
-        if (!form) return false;
+        if (!form) return null;
         const fd = new FormData(form);
-        const entries = [];
+        const data = {};
+        let action = form.action;
         for (const [k, v] of fd.entries()) {
-          if (k !== 'g-recaptcha-response') entries.push(encodeURIComponent(k) + '=' + encodeURIComponent(v));
+          data[k] = v;
         }
-        try {
-          const resp = await fetch(form.action, { method: 'POST', body: entries.join('&'), redirect: 'manual' });
-          const text = await resp.text();
-          if (text.includes('registrada') || text.includes('Respuesta') || text.includes('hemos registrado')) return true;
-          return !!(resp.headers.get('location'));
-        } catch(e) { return false; }
-      }).catch(() => false);
-      if (directOk) {
-        console.log("  [VA] ENVIADO por bypass!");
-        return true;
+        // Add required fields if missing from FormData
+        const fbzx = document.querySelector('input[name="fbzx"]')?.value || '';
+        const pageHistory = document.querySelector('input[name="pageHistory"]')?.value || '0';
+        data['fbzx'] = fbzx;
+        data['pageHistory'] = pageHistory;
+        // Remove captcha param
+        delete data['g-recaptcha-response'];
+        return { data, action };
+      }).catch(() => null);
+      if (formData && formData.action) {
+        const directOk = await new Promise(resolve => {
+          const body = querystring.stringify(formData.data);
+          const url = new URL(formData.action);
+          const mod = url.protocol === 'https:' ? https : http;
+          const req = mod.request({
+            hostname: url.hostname,
+            path: url.pathname,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Length': Buffer.byteLength(body),
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Origin': 'https://docs.google.com',
+              'Referer': 'https://docs.google.com/forms/',
+            }
+          }, res => {
+            let text = '';
+            res.on('data', d => text += d);
+            res.on('end', () => {
+              const ok = text.includes('registrada') || text.includes('Respuesta') || text.includes('hemos registrado')
+                || (res.headers.location && res.headers.location.includes('formResponse'));
+              console.log(`  [VA] Bypass status=${res.statusCode}, ok=${ok}, location=${res.headers.location || 'none'}`);
+              resolve(ok);
+            });
+          });
+          req.on('error', e => { console.log("  [VA] Bypass error:", e.message.substring(0,60)); resolve(false); });
+          req.write(body);
+          req.end();
+        });
+        if (directOk) {
+          console.log("  [VA] ENVIADO por bypass!");
+          return true;
+        }
+      } else {
+        console.log("  [VA] No se pudo extraer datos del formulario");
       }
       console.log("  [VA] Bypass fallo, usando envio normal...");
-
-      // Marcar captcha checkbox ANTES de enviar para evitar challenge
-      console.log("  [VA] Marcando captcha checkbox pre-envio...");
-      const frames = page.frames();
-      for (const f of frames) {
-        if (f.url().includes("recaptcha/api") && !f.url().includes("bframe")) {
-          try {
-            const checked = await f.evaluate(() => {
-              const a = document.querySelector("#recaptcha-anchor");
-              return a && a.getAttribute("aria-checked") === "true";
-            }).catch(() => false);
-            if (!checked) {
-              await f.$("#recaptcha-anchor").then(cb => cb?.click());
-              await delay(3000);
-            }
-          } catch (e) {}
-          break;
-        }
-      }
-      console.log("  [VA] Click en Enviar...");
+      console.log("  [VA] Click en Enviar (CapSolver lo resolvera)...");
       await clickBtn(page, "Enviar");
       await delay(5000);
       const body2 = await page.evaluate(() => document.body.innerText.substring(0, 500)).catch(() => "");
@@ -244,17 +281,39 @@ async function agentLoop(page, order, fillFieldsFn) {
     const sigBtn = await page.evaluate(() => {
       const btns = Array.from(document.querySelectorAll('[role="button"], button, input[type="submit"], span'));
       return btns.some(b => {
-        const txt = (b.innerText || b.value || "").trim().toLowerCase();
-        return txt === "siguiente" || txt === "next" || txt.includes("siguiente");
+        const txt = (b.innerText || b.value || b.getAttribute('aria-label') || "").trim().toLowerCase();
+        return txt === "siguiente" || txt === "next" || txt.includes("siguiente") || txt === "weiter" || txt.includes("weiter");
       });
     }).catch(() => false);
     if (sigBtn) {
       if (pageNum && pageNum.current === lastPageNum) {
         noProgressCount++;
-        if (noProgressCount >= 3) {
-          console.log("  [VA] Misma pagina tras 3 intentos de Siguiente, usando IA...");
-          noProgressCount = 0;
-        } else {
+         if (noProgressCount >= 3) {
+           console.log("  [VA] Misma pagina tras 3 intentos, probando clic directo por JS...");
+           const clicked = await page.evaluate(() => {
+             const btns = document.querySelectorAll('[role="button"], button, input[type="submit"]');
+             for (const b of btns) {
+               const txt = (b.innerText || b.value || b.getAttribute('aria-label') || "").trim().toLowerCase();
+               if (txt.includes("siguiente") || txt.includes("next")) {
+                 b.click();
+                 return true;
+               }
+             }
+             return false;
+           }).catch(() => false);
+           if (clicked) {
+             await delay(2000);
+             const newPg = await getPageNumber(page);
+             if (newPg && newPg.current !== pageNum.current) {
+               lastPageNum = newPg.current;
+               noProgressCount = 0;
+               console.log("  [VA] Avanzo a pagina " + newPg.current + "/" + newPg.total);
+               continue;
+             }
+           }
+           console.log("  [VA] Usando IA para recuperacion...");
+           noProgressCount = 0;
+         } else {
           console.log("  [VA] Click Siguiente (pagina " + pageNum.current + "/" + pageNum.total + ")...");
           await clickBtn(page, "Siguiente");
           const newPg = await waitForPageTransition(page, pageNum.current);
@@ -316,17 +375,33 @@ async function agentLoop(page, order, fillFieldsFn) {
         console.log("  Llena lo que falte o avanza manualmente.");
         console.log("  Presiona [ENTER] en esta consola cuando estes listo.");
 
-        await new Promise(resolve => {
-          const stdin = process.stdin;
-          stdin.resume();
-          stdin.once('data', () => {
-            stdin.pause();
-            resolve();
-          });
-        });
-
-        console.log("  [VA] Retomando control...\n");
-        noProgressCount = 0;
+        console.log("  [VA] Esperando 30s por intervencion manual...");
+        let intervened = false;
+        try {
+          await Promise.race([
+            new Promise(resolve => {
+              const stdin = process.stdin;
+              stdin.resume();
+              stdin.once('data', () => {
+                stdin.pause();
+                resolve();
+              });
+            }),
+            new Promise(resolve => setTimeout(resolve, 30000))
+          ]);
+          if (process.stdin.isPaused?.()) { intervened = true; }
+          else {
+            try { process.stdin.pause(); } catch(e) {}
+            intervened = false;
+          }
+        } catch(e) {}
+        if (intervened) {
+          console.log("  [VA] Retomando control (intervencion manual)...\n");
+          noProgressCount = 0;
+        } else {
+          console.log("  [VA] Sin intervencion, intentando recuperacion automatica...\n");
+          noProgressCount = Math.floor(noProgressCount / 2);
+        }
       }
     }
   }

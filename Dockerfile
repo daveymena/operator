@@ -26,6 +26,9 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     xvfb \
     x11vnc \
+    ffmpeg \
+    python3 \
+    python3-pip \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
@@ -46,7 +49,12 @@ RUN npm ci --omit=dev 2>/dev/null || npm install --production 2>/dev/null || tru
 COPY . .
 
 # Create required directories
-RUN mkdir -p /app/data /app/screenshots /app/logs /workspace
+RUN mkdir -p /app/data /app/screenshots /app/logs /workspace \
+    /app/skills/claro-agent/src /app/skills-data/claro-agent
+
+# Claro Agent: instalar dependencias python (whisper local para captcha de audio)
+RUN pip3 install --no-cache-dir -r /app/opencode-core/skills/claro-agent/requirements.txt \
+    && npm --prefix /app/opencode-core/skills/claro-agent install --omit=dev 2>/dev/null || true
 
 # Expose ports
 EXPOSE 3000 21291 21294

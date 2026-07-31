@@ -62,3 +62,11 @@ data/operator.db
 # SQLite database (generated at runtime)
 data/*.db
 data/*.json
+
+# Captchas y datos de audio del skill claro-agent
+opencode-core/skills/claro-agent/_captcha.*
+opencode-core/skills/claro-agent/*.wav
+opencode-core/skills/claro-agent/ordenes_procesadas.json
+opencode-core/skills/claro-agent/failed_captchas/
+opencode-core/skills/claro-agent/puppeteer_profile*/
+

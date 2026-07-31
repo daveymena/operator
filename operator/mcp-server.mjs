@@ -40,6 +40,7 @@ import { getTerminal } from './engines/terminal.mjs';
 import { getBrowser } from './engines/browser.mjs';
 import { getFilesystem } from './engines/filesystem.mjs';
 import platform from './platform/index.mjs';
+import { sendPending as claroSendPending, getStatus as claroGetStatus, getReport as claroGetReport } from '../opencode-core/skills/claro-agent/skill.js';
 
 // ═══════════════════════════════════════════════════════════════════
 //  MCP PROTOCOL IMPLEMENTATION (stdio transport)
@@ -415,6 +416,29 @@ const TOOLS = [
     }
   },
 
+  // ═══ CLARO AGENT (órdenes FTTH) ═══
+  {
+    name: 'operator_claro_status',
+    description: 'Estado del skill Claro Agent: si los scripts están montados, cuántas órdenes hay pendientes y enviadas.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'operator_claro_send_pending',
+    description: 'Ejecuta el envío de órdenes de trabajo de Claro FTTH pendientes al Google Form. Procesa las órdenes no enviadas en ordenes_procesadas.json. Opcional: pending_json ruta a un JSON de órdenes nuevas para fusionar, test=true para probar 1 sola orden.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pending_json: { type: 'string', description: 'Ruta a JSON con órdenes nuevas (opcional)' },
+        test: { type: 'boolean', description: 'Si true, solo procesa 1 orden de prueba' }
+      }
+    }
+  },
+  {
+    name: 'operator_claro_report',
+    description: 'Lee el reporte diario de órdenes de Claro (reporte_diario.txt): qué órdenes se enviaron, cuáles fallaron y por qué.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+
   // ═══ PLUGINS ═══
   {
     name: 'operator_list_plugins',
@@ -621,6 +645,18 @@ async function executeTool(name, args) {
           ? '✅ No hay alertas activas'
           : active.map(a => `${a.severity === 'critical' ? '🚨' : '⚠️'} ${a.ruleName}: ${a.message}`).join('\n');
         return { content: [{ type: 'text', text }] };
+      }
+
+      // Claro Agent (órdenes FTTH)
+      case 'operator_claro_status': {
+        return formatResult({ ok: true, ...claroGetStatus() });
+      }
+      case 'operator_claro_send_pending': {
+        const result = await claroSendPending({ pendingJson: args.pending_json || null, test: !!args.test });
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      }
+      case 'operator_claro_report': {
+        return { content: [{ type: 'text', text: claroGetReport() }] };
       }
 
       // System — vía orchestrator.executeAction para reportar la PC real

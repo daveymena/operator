@@ -1,9 +1,3 @@
-"""
-local_transcribe.py - Transcriber LOCAL para CAPTCHA audio
-Método 1: faster-whisper (local, CPU, sin costo)
-Método 2: Google STT (gratis)
-Especializado para audio distorsionado de reCAPTCHA (números hablados)
-"""
 import sys, os, json, re, subprocess
 
 def find_ffmpeg():
@@ -17,82 +11,77 @@ def find_ffmpeg():
         if os.path.exists(cand): return cand
     return "ffmpeg"
 
+FFMPEG = find_ffmpeg()
+
 def clean_audio(input_path):
-    """Limpia audio CAPTCHA: amplifica, quita ruido, normaliza"""
-    ffmpeg = find_ffmpeg()
     clean_path = input_path + ".clean.wav"
+    for attempt in range(3):
+        try:
+            filters = [
+                "highpass=f=100,lowpass=f=4000,afftdn=nf=-30,volume=3.0,aresample=16000,dynaudnorm=g=5:f=250",
+                "highpass=f=80,lowpass=f=3500,afftdn=nf=-20,volume=4.0,aresample=16000",
+                "highpass=f=120,lowpass=f=3000,volume=5.0,aresample=16000,compand=0|0:1|1:-90/-60|-60/-40|-40/-30|-20/-20:6:0:0:0",
+            ]
+            subprocess.run([
+                FFMPEG, "-y", "-i", input_path,
+                "-af", filters[attempt],
+                "-ac", "1", "-ar", "16000", clean_path
+            ], capture_output=True, timeout=15, check=True)
+            if os.path.exists(clean_path) and os.path.getsize(clean_path) > 1000:
+                return clean_path
+        except:
+            continue
     try:
         subprocess.run([
-            ffmpeg, "-y", "-i", input_path,
-            "-af", "highpass=f=100,lowpass=f=4000,afftdn=nf=-30,volume=3.0,aresample=16000,dynaudnorm=g=5:f=250",
+            FFMPEG, "-y", "-i", input_path,
             "-ac", "1", "-ar", "16000", clean_path
-        ], capture_output=True, timeout=15, check=True)
+        ], capture_output=True, timeout=10, check=True)
         return clean_path
     except:
         return None
 
 def extract_numbers_from_text(text):
-    """Extrae números del texto transscrito, incluyendo palabras numéricas"""
-    # Primero intentar dígitos directos
     nums = re.sub(r'[^0-9\s]', '', text).strip()
     if nums and re.search(r'[0-9]', nums):
         return nums
-
-    # Mapa de palabras a dígitos (inglés + español + variaciones comunes de Whisper)
+    # Convertir palabras numéricas SOLO si el texto es casi todo una secuencia
+    # de números dictados (ej. "five two eight"). Evita falsos positivos con
+    # palabras comunes ("for", "to", "ate") dentro de frases normales.
     word_map = {
-        # English
-        "zero":"0","oh":"0","o":"0","one":"1","won":"1","won":"1",
-        "two":"2","to":"2","too":"2","twos":"2",
-        "three":"3","tree":"3","free":"3","threes":"3",
-        "four":"4","for":"4","fore":"4","fours":"4",
-        "five":"5","fives":"5",
-        "six":"6","sax":"6","sixes":"6",
+        "zero":"0","oh":"0","one":"1","won":"1",
+        "two":"2","to":"2","too":"2",
+        "three":"3","tree":"3","free":"3",
+        "four":"4","for":"4","fore":"4",
+        "five":"5",
+        "six":"6","sixes":"6",
         "seven":"7","sevens":"7",
         "eight":"8","ate":"8","eights":"8",
-        "nine":"9","niner":"9","nines":"9","nein":"9",
+        "nine":"9","niner":"9","nein":"9",
         "ten":"10",
-        # Español
         "cero":"0","uno":"1","dos":"2","tres":"3","cuatro":"4",
         "cinco":"5","seis":"6","siete":"7","ocho":"8","nueve":"9","diez":"10",
-        # Whisper a menudo confunde estos sonidos
-        "later":"8","latest":"8","lately":"8",
-        "visits":"6","visit":"6","business":"6",
-        "thanks":"3","thank":"3","think":"3","thick":"3",
-        "easy":"1","is":"1","his":"1",
-        "effective":"3","effect":"3",
-        "listen":"5","lesson":"5",
-        "play":"8","say":"8","stay":"8",
-        "enter":"3","inter":"3",
-        "hear":"3","here":"3",
-        "what":"8","want":"8",
-        "robot":"2","note":"6","code":"0","hold":"0","old":"0",
     }
-
     lower = text.lower()
-    found = []
-    for word, digit in word_map.items():
-        if re.search(r'\b' + re.escape(word) + r'\b', lower):
-            found.append(digit)
+    words = re.findall(r"[a-z]+", lower)
+    if not words:
+        return ""
+    number_words = [w for w in words if w in word_map]
+    ratio = len(number_words) / len(words)
+    if ratio < 0.6:
+        return ""
+    return " ".join(word_map[w] for w in words if w in word_map)
 
-    return " ".join(found) if found else ""
-
-def transcribe_whisper(audio_path):
-    """Método 1: faster-whisper local con parámetros optimizados para CAPTCHA"""
+def transcribe_whisper(audio_path, model_size="base"):
     try:
         from faster_whisper import WhisperModel
-        model = WhisperModel("base", device="cpu", compute_type="int8")
-
-        # Intentar múltiples configuraciones para CAPTCHA
+        model = WhisperModel(model_size, device="cpu", compute_type="int8")
         configs = [
-            # Config 1: Sin VAD, beam_size alto, inglés
             dict(beam_size=5, language="en", vad_filter=False,
                  condition_on_previous_text=False, without_timestamps=True),
-            # Config 2: Con VAD suave
             dict(beam_size=5, language="en", vad_filter=True,
                  vad_parameters=dict(min_silence_duration_ms=200, speech_pad_ms=400),
                  condition_on_previous_text=False),
         ]
-
         best_text = ""
         for cfg in configs:
             try:
@@ -105,13 +94,11 @@ def transcribe_whisper(audio_path):
                     return text, nums, info.language
             except Exception:
                 continue
-
         return best_text, extract_numbers_from_text(best_text), "en"
     except Exception as e:
         return None, None, str(e)
 
 def transcribe_google(wav_path):
-    """Método 2: Google STT gratis"""
     try:
         import speech_recognition as sr
         r = sr.Recognizer()
@@ -141,40 +128,55 @@ def main():
         print(json.dumps({"error": "file not found"}))
         sys.exit(0)
 
-    # 1) Limpiar audio
     clean_path = clean_audio(audio_path)
     work_path = clean_path if clean_path and os.path.exists(clean_path) else audio_path
 
-    # 2) Método PRIMARIO: faster-whisper local
-    text, numbers, lang = transcribe_whisper(work_path)
-    metodo = "whisper_local"
+    results = []
+    modelos = ["medium", "small", "base"]
 
-    # 3) Fallback: Google STT
-    if not numbers:
-        g_text, g_numbers, g_lang = transcribe_google(work_path)
-        if g_numbers:
-            text, numbers, lang = g_text, g_numbers, g_lang
-            metodo = f"google_{g_lang}"
+    text, numbers, lang = None, None, None
 
-    # Limpiar temporal
+    for model_size in modelos:
+        text, numbers, lang = transcribe_whisper(work_path, model_size)
+        if numbers:
+            print(json.dumps({
+                "texto": (text or "")[:200],
+                "numeros": numbers,
+                "metodo": f"whisper_{model_size}"
+            }))
+            sys.exit(0)
+        if text:
+            results.append((text, numbers, f"whisper_{model_size}"))
+
+    g_text, g_numbers, g_lang = transcribe_google(work_path)
+    if g_numbers:
+        print(json.dumps({
+            "texto": (g_text or "")[:200],
+            "numeros": g_numbers,
+            "metodo": f"google_{g_lang}"
+        }))
+        sys.exit(0)
+    if g_text:
+        results.append((g_text, g_numbers, f"google_{g_lang}"))
+
     if clean_path and os.path.exists(clean_path):
         try: os.unlink(clean_path)
         except: pass
 
-    if not numbers:
+    if results:
+        text, numbers, metodo = results[0]
         print(json.dumps({
             "texto": (text or "")[:200],
-            "numeros": "",
+            "numeros": numbers or "",
             "metodo": metodo,
             "raw_text": (text or "")[:200]
         }))
-        sys.exit(0)
-
-    print(json.dumps({
-        "texto": (text or "")[:200],
-        "numeros": numbers,
-        "metodo": metodo
-    }))
+    else:
+        print(json.dumps({
+            "texto": "",
+            "numeros": "",
+            "metodo": "none",
+        }))
 
 if __name__ == "__main__":
     main()

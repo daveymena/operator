@@ -4,6 +4,8 @@ const fs = require("fs");
 const os = require("os");
 const cp = require("child_process");
 
+const CAPTCHA_DATA_DIR = process.env.CLARO_DATA_DIR || __dirname;
+
 // Delay humano más realista (base + variación aleatoria)
 function delay(ms) {
   const variation = ms * 0.4; // 40% de variación
@@ -98,10 +100,10 @@ async function clickVerify(bframe) {
 }
 
 // Descarga el audio usando interceptacion de red (response.buffer) con timeout
-async function downloadAudioViaNetwork(page, timeoutMs = 30000) {
+async function downloadAudioViaNetwork(page, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      page.off('response', handler);
+      page.removeListener('response', handler);
       reject(new Error('timeout'));
     }, timeoutMs);
 
@@ -110,7 +112,7 @@ async function downloadAudioViaNetwork(page, timeoutMs = 30000) {
         const url = response.url() || '';
         const ct = (response.headers()['content-type'] || '').toLowerCase();
         if (!ct.includes('audio') && !url.includes('audio') && !url.match(/\/recaptcha\/api2\/.*payload/)) return;
-        page.off('response', handler);
+        page.removeListener('response', handler);
         clearTimeout(timer);
         const buf = await response.buffer().catch(() => null);
         if (buf && buf.length > 1000) {
@@ -119,107 +121,184 @@ async function downloadAudioViaNetwork(page, timeoutMs = 30000) {
       } catch (_) {}
     };
     page.on('response', handler);
-
-    page.on('requestfailed', (req) => {
-      if ((req.url() || '').includes('audio')) {
-        console.log("  [CAPTCHA-AUDIO] Request fallida:", req.url().substring(0, 100));
-      }
-    });
   });
+}
+
+async function downloadAudioDirect(bframe) {
+  const audioUrl = await bframe.evaluate(() => {
+    const a = document.querySelector("audio");
+    return a ? (a.currentSrc || a.src || "") : "";
+  }).catch(() => "");
+  if (!audioUrl || audioUrl.startsWith("blob:")) return null;
+  try {
+    const b64 = await bframe.evaluate((url) => {
+      return fetch(url, { credentials: 'include' }).then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(b => {
+        const bytes = new Uint8Array(b);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        return btoa(binary);
+      });
+    }, audioUrl).catch(() => null);
+    if (b64) {
+      console.log("  [CAPTCHA-AUDIO] Audio descargado por fetch directo");
+      return Buffer.from(b64, "base64");
+    }
+  } catch (e) {
+    console.log("  [CAPTCHA-AUDIO] Fetch directo fallo: " + e.message.substring(0, 50));
+  }
+  return null;
+}
+
+// Obtener clave Groq desde env o sistema
+function _getGroqKey() {
+  const direct = process.env.GROQ_API_KEY;
+  if (direct) return direct;
+  try {
+    const r1 = cp.execSync(
+      "powershell -NoProfile -Command \"[Environment]::GetEnvironmentVariable('GROQ_API_KEY','User')\"",
+      { encoding: "utf8", timeout: 5000 }
+    ).trim();
+    if (r1) return r1;
+    const r2 = cp.execSync(
+      "powershell -NoProfile -Command \"[Environment]::GetEnvironmentVariable('GROQ_API_KEY','Machine')\"",
+      { encoding: "utf8", timeout: 5000 }
+    ).trim();
+    if (r2) return r2;
+  } catch (e) {}
+  return "";
+}
+
+async function transcribeGroq(audioFilePath) {
+  const apiKey = _getGroqKey();
+  if (!apiKey) {
+    console.log("  [CAPTCHA-AUDIO] Groq SKIP: no API key");
+    return null;
+  }
+  try {
+    const buf = fs.readFileSync(audioFilePath);
+    const form = new FormData();
+    form.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
+    form.append("model", "whisper-large-v3");
+    form.append("language", "es");
+    form.append("response_format", "json");
+    const resp = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey },
+      body: form,
+      signal: AbortSignal.timeout(60000)
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const text = (data.text || "").trim();
+      if (text) {
+        console.log("  [CAPTCHA-AUDIO] Groq OK: \"" + text.substring(0, 60) + "\"");
+        return text;
+      }
+    }
+    console.log("  [CAPTCHA-AUDIO] Groq fail: HTTP " + resp.status);
+  } catch (e) {
+    console.log("  [CAPTCHA-AUDIO] Groq error: " + e.message.substring(0, 60));
+  }
+  return null;
+}
+
+// AI refine: si la transcripción no tiene números claros, preguntar al LLM
+async function aiRefineNumbers(rawText) {
+  if (!rawText) return null;
+  const zenKey = (process.env.OPENCODE_ZEN_API_KEY || "").trim();
+  if (!zenKey) return null;
+  try {
+    const resp = await fetch("https://opencode.ai/zen/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + zenKey
+      },
+      body: JSON.stringify({
+        model: "deepseek-v4-flash-free",
+        messages: [
+          { role: "system", content: "Eres un extractor de números de audios captcha de Google reCAPTCHA. Los captchas dictan una secuencia de números (ej. '5 2 8 3') o una palabra clave. Responde SOLO con los números/dígitos separados por espacio. Si no hay números claros responde 'NADA'." },
+          { role: "user", content: "Transcripción del audio captcha: \"" + rawText + "\". Extrae SOLO los números hablados." }
+        ],
+        max_tokens: 50,
+        stream: false
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const content = (data.choices?.[0]?.message?.content || "").trim();
+      if (content && content !== "NADA") {
+        console.log("  [CAPTCHA-AUDIO] AI refine: \"" + rawText.substring(0, 40) + "\" -> \"" + content + "\"");
+        return content;
+      }
+    }
+  } catch (e) {
+    console.log("  [CAPTCHA-AUDIO] AI refine error: " + e.message.substring(0, 60));
+  }
+  return null;
 }
 
 async function transcribeAudio(audioFilePath) {
   console.log("  [CAPTCHA-AUDIO] Transcribiendo audio...");
 
-  // Método 1: faster-whisper LOCAL (sin API, sin costo)
-  try {
-    const out = cp.execSync(
-      `python "${path.join(__dirname, "local_transcribe.py")}" "${audioFilePath}"`,
-      { encoding: "utf8", timeout: 60000 }
-    );
-    for (const line of out.trim().split("\n")) {
-      try {
-        const parsed = JSON.parse(line);
-        if (parsed.numeros && /[0-9]/.test(parsed.numeros)) {
-          console.log("  [CAPTCHA-AUDIO] Whisper local números: \"" + parsed.numeros + "\" (método: " + (parsed.metodo || "whisper_local") + ")");
-          return parsed.numeros;
-        }
-        // Si no hay números pero hay texto, devolver el texto tal cual (CAPTCHA de palabras)
-        if (parsed.texto && parsed.texto.trim().length > 0) {
-          const cleanText = parsed.texto.trim().replace(/[.,!?;:]/g, '').trim();
-          if (cleanText.length > 0) {
-            console.log("  [CAPTCHA-AUDIO] Whisper local texto: \"" + cleanText + "\" (método: " + (parsed.metodo || "whisper_local") + ")");
-            return cleanText;
-          }
-        }
-      } catch (e) {}
-    }
-  } catch (e) {
-    console.log("  [CAPTCHA-AUDIO] Whisper local error: " + e.message.substring(0, 60));
-  }
+  // Método 1: Groq whisper-large-v3 (cloud, mejor precisión)
+  let transcription = await transcribeGroq(audioFilePath);
+  let methodUsed = "groq";
 
-  // Método 2: Groq Whisper (fallback, gasta créditos)
-  const groqKey = process.env.GROQ_API_KEY || "";
-  if (groqKey) {
+  // Método 2: faster-whisper LOCAL (sin API, sin costo)
+  if (!transcription || !/[0-9]/.test(transcription)) {
+    console.log("  [CAPTCHA-AUDIO] Fallback a whisper local...");
     try {
-      const audioBuf = fs.readFileSync(audioFilePath);
-      const ext = path.extname(audioFilePath).toLowerCase().replace(".", "") || "mp3";
-      const mimeType = ext === "wav" ? "audio/wav" : "audio/mpeg";
-      const https = require("https");
-      const boundary = "----FormBoundary" + Date.now();
-      const parts = [];
-      parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-large-v3`);
-      parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nen`);
-      parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\njson`);
-      parts.push(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.${ext}"\r\nContent-Type: ${mimeType}\r\n\r\n`);
-      const bodyParts = [
-        Buffer.from(parts.join("\r\n"), "utf8"),
-        audioBuf,
-        Buffer.from(`\r\n--${boundary}--\r\n`, "utf8")
-      ];
-      const body = Buffer.concat(bodyParts);
-
-      const result = await new Promise((resolve, reject) => {
-        const req = https.request({
-          hostname: "api.groq.com",
-          path: "/openai/v1/audio/transcriptions",
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${groqKey}`,
-            "Content-Type": `multipart/form-data; boundary=${boundary}`,
-            "Content-Length": body.length
-          },
-          timeout: 20000
-        }, (res) => {
-          let data = "";
-          res.on("data", (c) => data += c);
-          res.on("end", () => { try { resolve(JSON.parse(data)); } catch (e) { resolve({}); } });
-        });
-        req.on("error", reject);
-        req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
-        req.write(body);
-        req.end();
-      });
-
-      const text = result?.text?.trim() || "";
-      if (text) {
-        console.log("  [CAPTCHA-AUDIO] Groq fallback: \"" + text.substring(0, 80) + "\"");
-        const nums = text.replace(/[^0-9\s]/g, "").trim();
-        if (nums && /[0-9]/.test(nums)) return nums;
-        // Devolver texto si no hay números (CAPTCHA de palabras)
-        const cleanText = text.replace(/[.,!?;:]/g, '').trim();
-        if (cleanText.length > 0) {
-          console.log("  [CAPTCHA-AUDIO] Groq texto: \"" + cleanText + "\"");
-          return cleanText;
-        }
+      const out = cp.execSync(
+        `python "${path.join(__dirname, "local_transcribe.py")}" "${audioFilePath}"`,
+        { encoding: "utf8", timeout: 180000 }
+      );
+      for (const line of out.trim().split("\n")) {
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.numeros && /[0-9]/.test(parsed.numeros)) {
+            console.log("  [CAPTCHA-AUDIO] Whisper local números: \"" + parsed.numeros + "\" (método: " + (parsed.metodo || "whisper_local") + ")");
+            transcription = parsed.numeros;
+            methodUsed = parsed.metodo || "whisper_local";
+            break;
+          }
+          if (parsed.texto && parsed.texto.trim().length > 0) {
+            const cleanText = parsed.texto.trim().replace(/[.,!?;:]/g, '').trim();
+            if (cleanText.length > 0) {
+              console.log("  [CAPTCHA-AUDIO] Whisper local texto: \"" + cleanText + "\" (método: " + (parsed.metodo || "whisper_local") + ")");
+              transcription = cleanText;
+              methodUsed = parsed.metodo || "whisper_local";
+              break;
+            }
+          }
+        } catch (e) {}
       }
     } catch (e) {
-      console.log("  [CAPTCHA-AUDIO] Groq error: " + e.message.substring(0, 60));
+      console.log("  [CAPTCHA-AUDIO] Whisper local error: " + e.message.substring(0, 60));
     }
   }
 
-  console.log("  [CAPTCHA-AUDIO] Sin transcripción");
-  return null;
+  // Método 3: AI refine con OpenCode Zen (última línea)
+  if (transcription && !/[0-9]/.test(transcription)) {
+    console.log("  [CAPTCHA-AUDIO] Sin números claros, AI refine...");
+    const refined = await aiRefineNumbers(transcription);
+    if (refined) {
+      transcription = refined;
+      methodUsed = "ai_refined";
+    }
+  }
+
+  if (!transcription) {
+    console.log("  [CAPTCHA-AUDIO] Sin transcripción");
+    return null;
+  }
+
+  console.log("  [CAPTCHA-AUDIO] Transcripción final (\"" + methodUsed + "\"): \"" + transcription.substring(0, 120) + "\"");
+  return transcription;
 }
 
 async function solveAudioChallenge(page, bframe) {
@@ -266,9 +345,8 @@ async function solveAudioChallenge(page, bframe) {
   // Detectar rate limit de Google
   const bodyText = bframeContent.bodyText || "";
   if (bodyText.includes("Try again later") || bodyText.includes("automated queries")) {
-    console.log("  [CAPTCHA-AUDIO] ⚠ RATE LIMIT detectado! Esperando 5 minutos (comportamiento humano)...");
-    // Esperar mucho más tiempo para parecer humano
-    await humanDelay(240000, 360000); // 4-6 minutos
+    console.log("  [CAPTCHA-AUDIO] ⚠ RATE LIMIT detectado! Esperando 30 segundos y reintentando...");
+    await delay(30000);
     return false;
   }
 
@@ -295,10 +373,6 @@ async function solveAudioChallenge(page, bframe) {
     if (!audioUrl) { console.log("  [CAPTCHA-AUDIO] No se cargo el elemento audio"); return false; }
   }
 
-  // Configurar captura de red ANTES de hacer play
-  console.log("  [CAPTCHA-AUDIO] Configurando captura de red para audio...");
-  const networkPromise = downloadAudioViaNetwork(page, 5000);
-
   // Click play
   console.log("  [CAPTCHA-AUDIO] Click Play...");
   try {
@@ -309,70 +383,68 @@ async function solveAudioChallenge(page, bframe) {
       if (audio) { audio.play(); return true; }
       return false;
     });
-    await delay(2000);
+    await delay(3000);
   } catch (e) {
     console.log("  [CAPTCHA-AUDIO] Error click play: " + e.message.substring(0, 60));
   }
 
-  // Esperar el audio capturado por red
-  let audioBuffer = null;
-  try {
-    audioBuffer = await networkPromise;
-    console.log("  [CAPTCHA-AUDIO] Audio capturado por red (" + audioBuffer.length + " bytes)");
-  } catch (e) {
-    console.log("  [CAPTCHA-AUDIO] Network interception fallo (" + e.message.substring(0, 40) + "), intentando fetch en bframe...");
+  // Debug: mostrar URL del audio
+  const audioSrc = await bframe.evaluate(() => {
+    const a = document.querySelector("audio");
+    return a ? { src: a.currentSrc || a.src || "", duration: a.duration, readyState: a.readyState } : null;
+  }).catch(() => null);
+  console.log("  [CAPTCHA-AUDIO] Audio source:", JSON.stringify(audioSrc));
+
+  // MÉTODO 1: fetch directo desde el bframe (más confiable)
+  let audioBuffer = await downloadAudioDirect(bframe);
+
+  // MÉTODO 2: intercepción de red (fallback)
+  if (!audioBuffer) {
+    console.log("  [CAPTCHA-AUDIO] Intentando intercepción de red...");
+    const networkPromise = downloadAudioViaNetwork(page, 15000);
+    await delay(2000);
+    try {
+      audioBuffer = await networkPromise;
+      if (audioBuffer) console.log("  [CAPTCHA-AUDIO] Audio capturado por red (" + audioBuffer.length + " bytes)");
+    } catch (e) {
+      console.log("  [CAPTCHA-AUDIO] Network interception fallo: " + e.message.substring(0, 50));
+    }
   }
 
-  // Fallback: intentar obtener el audio mediante fetch en bframe
+  // MÉTODO 3: blob URL con AudioContext (último recurso)
   if (!audioBuffer) {
-    const audioUrl = await bframe.evaluate(() => {
+    const audioUrl2 = await bframe.evaluate(() => {
       const a = document.querySelector("audio");
       return a ? (a.currentSrc || a.src || "") : "";
     }).catch(() => "");
-
-    if (audioUrl && !audioUrl.startsWith("blob:")) {
-      console.log("  [CAPTCHA-AUDIO] URL audio: " + audioUrl.substring(0, 100));
-      const b64 = await bframe.evaluate((url) => {
-        return fetch(url, { credentials: 'include' }).then(r => {
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.arrayBuffer();
-        }).then(b => {
-          const bytes = new Uint8Array(b);
-          let binary = "";
-          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-          return btoa(binary);
-        });
-      }, audioUrl).catch(() => null);
-
-      if (b64) {
-        audioBuffer = Buffer.from(b64, "base64");
-        console.log("  [CAPTCHA-AUDIO] Audio descargado por fetch (" + audioBuffer.length + " bytes)");
-      }
-    } else if (audioUrl && audioUrl.startsWith("blob:")) {
-      console.log("  [CAPTCHA-AUDIO] Audio es blob URL, intentando extraer con AudioContext...");
+    if (audioUrl2 && audioUrl2.startsWith("blob:")) {
+      console.log("  [CAPTCHA-AUDIO] Audio blob, extrayendo con AudioContext...");
       const b64 = await bframe.evaluate(() => {
         return new Promise((resolve) => {
           const audio = document.querySelector("audio");
           if (!audio) return resolve(null);
-          const ac = new (window.AudioContext || window.webkitAudioContext)();
-          const src = ac.createMediaElementSource(audio);
-          const dest = ac.createMediaStreamDestination();
-          src.connect(dest);
-          const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
-          const chunks = [];
-          recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-          recorder.onstop = async () => {
-            const blob = new Blob(chunks, { type: 'audio/webm' });
-            const buf = await blob.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = "";
-            for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-            resolve(btoa(binary));
-          };
-          recorder.start();
-          audio.currentTime = 0;
-          audio.play().catch(() => {});
-          setTimeout(() => { recorder.stop(); ac.close(); }, 10000);
+          try {
+            const ac = new (window.AudioContext || window.webkitAudioContext)();
+            const src = ac.createMediaElementSource(audio);
+            const dest = ac.createMediaStreamDestination();
+            src.connect(dest);
+            const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm' });
+            const chunks = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            recorder.onstop = () => {
+              const blob = new Blob(chunks, { type: 'audio/webm' });
+              blob.arrayBuffer().then(buf => {
+                const bytes = new Uint8Array(buf);
+                let binary = "";
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                resolve(btoa(binary));
+              });
+            };
+            recorder.start();
+            audio.currentTime = 0;
+            audio.play().catch(() => {});
+            setTimeout(() => { recorder.stop(); ac.close(); }, 10000);
+          } catch(e) { resolve(null); }
         });
       }).catch(() => null);
       if (b64) {
@@ -388,19 +460,30 @@ async function solveAudioChallenge(page, bframe) {
   }
 
   // Guardar audio
-  const audioFile = path.join(__dirname, "_captcha_" + Date.now() + ".mp3");
+  const audioFile = path.join(CAPTCHA_DATA_DIR, "_captcha_" + Date.now() + ".mp3");
   fs.writeFileSync(audioFile, audioBuffer);
   console.log("  [CAPTCHA-AUDIO] Audio guardado (" + audioBuffer.length + " bytes) en " + path.basename(audioFile));
 
   // Transcribir
   const transcription = await transcribeAudio(audioFile);
+
+  if (!transcription) {
+    console.log("  [CAPTCHA-AUDIO] Transcripcion vacia");
+    // GUARDAR ANTES DE BORRAR (bug: antes se borraba el archivo y la copia fallaba)
+    const failedDir = path.join(CAPTCHA_DATA_DIR, "failed_captchas");
+    if (!fs.existsSync(failedDir)) fs.mkdirSync(failedDir, { recursive: true });
+    const failedFile = path.join(failedDir, "captcha_" + Date.now() + ".mp3");
+    try { fs.copyFileSync(audioFile, failedFile); } catch (e) {
+      console.log("  [CAPTCHA-AUDIO] No se pudo guardar audio fallido: " + e.message.substring(0, 60));
+    }
+    console.log("  [CAPTCHA-AUDIO] Audio guardado para operator: " + failedFile);
+  }
   try { fs.unlinkSync(audioFile); } catch (e) {}
   try {
     const wavFile = audioFile + ".wav";
     if (fs.existsSync(wavFile)) fs.unlinkSync(wavFile);
   } catch (e) {}
-
-  if (!transcription) { console.log("  [CAPTCHA-AUDIO] Transcripcion vacia"); return false; }
+  if (!transcription) return false;
   console.log("  [CAPTCHA-AUDIO] Transcripcion: \"" + transcription.substring(0, 120) + "\"");
 
   bframe = getBframe(page);
@@ -609,19 +692,8 @@ Do NOT include any other text or explanation.`;
 // FIN: nueva funcion
 // ===================================================================
 
-const FREEMODEL_KEY = "fe_oa_db8434da9d092b657e26dba8e2cdbf5cc460848f7e3b490c";
-const FREEMODEL_URL = "https://api.freemodel.dev";
-
-function getAIVisionKey() {
-  const direct = process.env.FREEMODEL_API_KEY || "";
-  if (direct) return direct;
-  return FREEMODEL_KEY;
-}
-
 async function solveVisualWithAI(page, bframe, tileInfo) {
   if (!tileInfo || !tileInfo.tiles || tileInfo.tiles.length === 0) return false;
-  const apiKey = getAIVisionKey();
-  if (!apiKey) { console.log("  [CAPTCHA-VISION] No API key"); return false; }
 
   const challenge = tileInfo.challengeText || "";
   console.log("  [CAPTCHA-VISION] Desafio: \"" + challenge.substring(0, 80) + "\"");
@@ -641,12 +713,13 @@ async function solveVisualWithAI(page, bframe, tileInfo) {
   const screenshot = await page.screenshot({ clip, encoding: 'base64' }).catch(() => null);
   if (!screenshot) { console.log("  [CAPTCHA-VISION] No screenshot"); return false; }
 
-  console.log("  [CAPTCHA-VISION] Enviando a IA...");
+  console.log("  [CAPTCHA-VISION] Enviando a OpenCode Zen...");
   const gridSize = tileInfo.gridSize || 3;
+
+  const { callOpenCodeZen } = require('./ai_supervisor.js');
 
   for (let vRound = 0; vRound < 3; vRound++) {
     try {
-      // Tomar screenshot NUEVO para cada ronda
       const bf = getBframe(page);
       if (!bf) return true;
       const currentTiles = await getCaptchaTileInfo(page, bf);
@@ -662,44 +735,15 @@ async function solveVisualWithAI(page, bframe, tileInfo) {
       }, encoding: 'base64' }).catch(() => null);
       if (!newScreenshot) break;
 
-      const https = require('https');
       const prompt = vRound === 0
         ? `You are an image analysis assistant. This is a ${gridSize}x${gridSize} grid of small photos. Each photo is numbered 1 to ${ct.length}. Describe what object is SHOWN in each photo. Reply with a JSON array like [{"tile":1,"shows":"object"},{"tile":2,"shows":"object"}]. Target to find: "${challenge}". Be concise. One word per object.`
         : `Which tile numbers show "${challenge}"? Reply with ONLY the tile numbers separated by spaces. Numbers only.`;
 
-      const data = JSON.stringify({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: [
-          { type: "text", text: prompt },
-          { type: "image_url", image_url: { url: `data:image/png;base64,${newScreenshot}` } }
-        ]}],
-        max_tokens: vRound === 0 ? 500 : 50
-      });
+      const systemMsg = "Eres un asistente de analisis de imagenes. Responde solo con el formato solicitado.";
 
-      const result = await new Promise((resolve, reject) => {
-        const req = https.request({
-          hostname: "api.freemodel.dev",
-          path: "/v1/chat/completions",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Length": Buffer.byteLength(data)
-          },
-          timeout: 30000
-        }, (res) => {
-          let body = "";
-          res.on("data", d => body += d);
-          res.on("end", () => resolve(body));
-        });
-        req.on("error", reject);
-        req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
-        req.write(data);
-        req.end();
-      });
+      const aiText = await callOpenCodeZen(prompt, systemMsg, newScreenshot);
+      if (!aiText) { console.log("  [CAPTCHA-VISION] Sin respuesta de IA"); continue; }
 
-      const parsed = JSON.parse(result);
-      const aiText = parsed?.choices?.[0]?.message?.content?.trim() || "";
       console.log("  [CAPTCHA-VISION] R" + (vRound+1) + ": \"" + aiText.substring(0, 120) + "\"");
 
       let tileIndices = [];
@@ -830,12 +874,12 @@ async function tryDirectSubmit(page) {
       const resp = await fetch(form.action, { method: 'POST', body, redirect: 'manual' });
       return { status: resp.status, redirected: resp.headers.get('location') || '', textStart: (await resp.text()).substring(0, 300) };
     });
-    console.log("  [CAPTCHA] Direct submit status:", result.status);
-    if (result.redirected || (result.textStart && (result.textStart.includes('registrada') || result.textStart.includes('Respuesta')))) {
+    console.log("  [CAPTCHA] Direct submit status:", result?.status);
+    if (result?.redirected || (result?.textStart && (result.textStart.includes('registrada') || result.textStart.includes('Respuesta')))) {
       console.log("  [CAPTCHA] Envio directo exitoso!");
       return true;
     }
-    console.log("  [CAPTCHA] Direct submit fallo:", result.textStart.substring(0, 100));
+    console.log("  [CAPTCHA] Direct submit fallo:", result?.textStart?.substring(0, 100) || "sin respuesta");
   } catch (e) {
     console.log("  [CAPTCHA] Error direct submit:", e.message.substring(0, 60));
   }
@@ -891,7 +935,7 @@ async function waitForManualCaptcha(page, timeoutMs = 300000) {
   return false;
 }
 
-async function solveCaptchaMultiRound(page, maxRounds = 3) {
+async function solveCaptchaMultiRound(page, maxRounds = 2) {
   console.log("\n  [CAPTCHA] Iniciando...");
   await humanDelay(2000, 4000);
 
@@ -910,7 +954,6 @@ async function solveCaptchaMultiRound(page, maxRounds = 3) {
           if (box) {
             const r = await box.boundingBox();
             if (r) {
-              // Movimiento humano: curva natural
               const startX = r.x + r.width / 2 + (Math.random() * 80 - 40);
               const startY = r.y + r.height / 2 + (Math.random() * 50 - 25);
               await page.mouse.move(startX, startY, { steps: 5 });
@@ -935,6 +978,8 @@ async function solveCaptchaMultiRound(page, maxRounds = 3) {
     if (!getBframe(page)) { console.log("  [CAPTCHA] Superado (sin challenge)"); return true; }
   }
 
+  let rateLimited = false;
+
   for (let round = 0; round < maxRounds; round++) {
     const bf = getBframe(page);
     if (!bf) {
@@ -946,9 +991,23 @@ async function solveCaptchaMultiRound(page, maxRounds = 3) {
 
     console.log("  [CAPTCHA] Ronda " + (round + 1) + "/" + maxRounds);
 
-    // PRIMERO: audio con Whisper local
-    console.log("  [CAPTCHA] Intentando audio con Whisper local...");
+    // PRIMERO: audio con whisper local
+    console.log("  [CAPTCHA] Intentando audio con whisper local...");
     const audioOk = await solveAudioChallenge(page, bf);
+
+    // Detectar rate limit global por el texto del bframe
+    if (!audioOk) {
+      const bfAfter = getBframe(page);
+      if (bfAfter) {
+        const rateText = await bfAfter.evaluate(() => document.body.innerText.substring(0, 300)).catch(() => "");
+        if (rateText.includes("Try again later") || rateText.includes("automated queries")) {
+          console.log("  [CAPTCHA] ⚠ RATE LIMIT CONFIRMADO - Abortando intentos");
+          rateLimited = true;
+          break;
+        }
+      }
+    }
+
     await humanDelay(4000, 7000);
 
     if (!getBframe(page)) {
@@ -959,45 +1018,41 @@ async function solveCaptchaMultiRound(page, maxRounds = 3) {
       }
     }
 
-    // SEGUNDO: vision con Gemma4 como fallback
-    try {
-      const rb = getBframe(page);
-      if (rb) {
-        await rb.evaluate(() => document.querySelector("#recaptcha-reload-button, .rc-reload-button")?.click());
-        await humanDelay(3000, 5000);
-      }
-    } catch (e) {}
+    if (rateLimited) break;
 
-    const visionBf = getBframe(page);
-    if (visionBf) {
-      console.log("  [CAPTCHA] Intentando vision con Gemma4...");
-      const visionOk = await solveVisualWithGemma4(page, visionBf);
-      await humanDelay(4000, 7000);
-
-      if (!getBframe(page)) {
-        const checked = await isCaptchaChecked(page);
-        if (checked) {
-          console.log("  [CAPTCHA] Superado con audio!");
-          return true;
+    // Refrescar con backoff exponencial entre rondas
+    if (round < maxRounds - 1) {
+      const waitTime = 3000 + (round * 5000);
+      console.log("  [CAPTCHA] Esperando " + (waitTime/1000).toFixed(0) + "s antes de reintentar...");
+      await delay(waitTime);
+      try {
+        const cbf = getBframe(page);
+        if (cbf) {
+          await cbf.evaluate(() => document.querySelector("#recaptcha-reload-button, .rc-reload-button")?.click());
+          await humanDelay(4000, 6000);
         }
-      }
+      } catch (e) {}
     }
+  }
 
-    // Refrescar para siguiente ronda
-    try {
-      const cbf = getBframe(page);
-      if (cbf) {
-        await cbf.evaluate(() => document.querySelector("#recaptcha-reload-button, .rc-reload-button")?.click());
-        await humanDelay(3000, 5000);
-      }
-    } catch (e) {}
+  if (rateLimited) {
+    console.log("  [CAPTCHA] ⚠ Google bloqueó temporalmente por rate limiting.");
+    console.log("  [CAPTCHA] Espera 30-60 minutos antes de reintentar.");
   }
 
   console.log("  [CAPTCHA] Intentando envio directo como ultimo recurso...");
   if (await tryDirectSubmit(page)) return true;
 
-  console.log("  [CAPTCHA] Fallaron todos los intentos automaticos");
-  return await waitForManualCaptcha(page);
+  // Si en entorno interactivo (no headless), pedir ayuda manual
+  if (!process.env.CLARO_HEADLESS) {
+    console.log("  [CAPTCHA] Fallaron los intentos automaticos en modo visible");
+    console.log("  [CAPTCHA] Resuelve el captcha manualmente en la ventana del navegador");
+    return await waitForManualCaptcha(page, 300000);
+  }
+
+  console.log("  [CAPTCHA] Fallaron todos los intentos en modo headless");
+  console.log("  [CAPTCHA] Guardando audio de captcha para inspeccion...");
+  return false;
 }
 
 module.exports = { solveCaptchaMultiRound };
