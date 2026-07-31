@@ -152,8 +152,29 @@ const TOOLS = [
   // ═══ SCREEN / VISION ═══
   {
     name: 'operator_screenshot',
-    description: 'Toma una captura de pantalla completa del escritorio',
-    inputSchema: { type: 'object', properties: {} }
+    description: 'Toma una captura de pantalla completa del escritorio de la PC remota conectada (o local si no hay bridge) y la devuelve como imagen. Puedes ver la pantalla del usuario.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        quality: { type: 'number', description: 'Calidad JPEG 1-100 (default 60)' },
+        scale: { type: 'number', description: 'Escala 0.1-1.0 (default 0.75)' },
+        view: { type: 'boolean', description: 'Si true (default), devuelve la imagen como bloque image para que el modelo la vea. Si false, solo guarda y reporta texto.' }
+      },
+      required: []
+    }
+  },
+  {
+    name: 'pc_view_screen',
+    description: 'Visualiza la pantalla actual de la PC remota del usuario (la captura viaja por el bridge desde el agent-server hacia su pc-agent.mjs). Devuelve la imagen para que la VEAS en el chat. Úsalo para saber qué tiene abierto el usuario, dónde hacer clic, etc. Igual que una tool de browser_snapshot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        quality: { type: 'number', description: 'Calidad JPEG 1-100 (default 65)' },
+        scale: { type: 'number', description: 'Escala 0.1-1.0 (default 0.8) — mayor = más nítido pero más grande' },
+        force: { type: 'boolean', description: 'Forzar nueva captura aunque la pantalla no haya cambiado (default true)' }
+      },
+      required: []
+    }
   },
   {
     name: 'operator_describe_screen',
@@ -463,11 +484,25 @@ async function executeTool(name, args) {
 
       // Screen
       case 'operator_screenshot': {
-        // Vía orchestrator.executeAction para que use el bridge remoto (PC real)
-        // cuando está conectado, en vez de la pantalla local del proceso.
-        const result = await orchestrator.executeAction({ type: 'screenshot', params: {} });
+        const p = args || {};
+        const result = await orchestrator.executeAction({ type: 'screenshot', params: { quality: p.quality, scale: p.scale } });
+        const view = p.view !== false;
         if (result?.ok !== false && (result?.ok || result?.base64)) {
-          return { content: [{ type: 'text', text: `Screenshot: ${result.file || 'captured (base64)'}` }] };
+          if (view && result?.base64) {
+            return imageContent(result, 'image/jpeg', 'Screenshot del escritorio');
+          }
+          return { content: [{ type: 'text', text: `Screenshot: ${result.file || 'captured'} (${Math.round((result.base64?.length || 0) * 3 / 4 / 1024)}KB)` }] };
+        }
+        return formatResult(result);
+      }
+      case 'pc_view_screen': {
+        const p = args || {};
+        const result = await orchestrator.executeAction({ type: 'screenshot', params: { quality: p.quality ?? 65, scale: p.scale ?? 0.8, force: p.force !== false } });
+        if (result?.base64) {
+          return imageContent(result, 'image/jpeg', `Pantalla del usuario — ${result.originalWidth || result.width}x${result.originalHeight || result.height}`);
+        }
+        if (result?.unchanged) {
+          return { content: [{ type: 'text', text: 'La pantalla no cambió desde la última captura (unchanged). Llama de nuevo con force:true si necesitas una nueva.' }] };
         }
         return formatResult(result);
       }
@@ -687,6 +722,22 @@ function formatResult(data) {
     return { content: [{ type: 'text', text: text.length > 10000 ? text.substring(0, 10000) + '\n...[truncated]' : text }] };
   }
   return { content: [{ type: 'text', text: String(data) }] };
+}
+
+// Convierte el resultado de un screenshot ({base64, width, height, ...}) en un
+// bloque MCP de tipo image, para que OpenCode renderice la captura dentro del
+// chat y el modelo la pueda ver (igual que Playwright/browser_snapshot).
+// El spec de MCP permite content items con type 'image' + data base64 + mimeType.
+function imageContent(ssResult, mimeType = 'image/jpeg', caption = 'Screenshot') {
+  const content = [];
+  if (caption) {
+    const dims = `${ssResult.originalWidth || ssResult.width || '?'}x${ssResult.originalHeight || ssResult.height || '?'}`;
+    content.push({ type: 'text', text: `${caption} (${dims}, JPEG)` });
+  }
+  if (ssResult.base64) {
+    content.push({ type: 'image', data: ssResult.base64, mimeType });
+  }
+  return { content };
 }
 
 // ═══════════════════════════════════════════════════════════════════
