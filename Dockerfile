@@ -53,6 +53,7 @@ RUN mkdir -p /app/data /app/screenshots /app/logs /workspace \
     /app/skills/claro-agent/src /app/skills-data/claro-agent
 
 # Claro Agent: instalar dependencias python (whisper local para captcha de audio)
+# y node (puppeteer-extra, sharp, nodemailer). PUPPETEER_SKIP evita re-descargar chromium.
 RUN pip3 install --no-cache-dir -r /app/opencode-core/skills/claro-agent/requirements.txt \
     && npm --prefix /app/opencode-core/skills/claro-agent install --omit=dev 2>/dev/null || true
 
