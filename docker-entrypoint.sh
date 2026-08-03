@@ -23,6 +23,20 @@ fi
 # ─── Create directories ──────────────────────────────────────────────────────
 mkdir -p screenshots logs config operator/memory operator/knowledge
 
+# ─── PostgreSQL persistence sync ─────────────────────────────────────────────
+# El contenedor es efímero: la información vive en PostgreSQL. Al arrancar se
+# restauran los datos y se inicia un watcher que sube los cambios periódicamente.
+if [ -n "$DATABASE_URL" ]; then
+  echo "🗄️  Restaurando datos desde PostgreSQL..."
+  node operator/pg-sync.mjs restore || echo "⚠️  restore falló (BD vacía o sin datos)"
+  echo "🗄️  Iniciando watcher de persistencia PostgreSQL..."
+  node operator/pg-sync.mjs watch &
+  PG_SYNC_PID=$!
+  echo "✅ PostgreSQL sync activo (PID: $PG_SYNC_PID)"
+else
+  echo "⚠️  DATABASE_URL no definido — el contenedor usará solo volúmenes locales"
+fi
+
 # ─── Start Operator Pro API Server (port 3000) ───────────────────────────────
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "🌐 Starting Operator Pro API Server (port ${OPERATOR_PORT:-3000})"
@@ -85,6 +99,11 @@ cleanup() {
   kill $BRIDGE_PID 2>/dev/null || true
   kill $OPENCODE_PID 2>/dev/null || true
   kill $AGENT_PID 2>/dev/null || true
+  kill $PG_SYNC_PID 2>/dev/null || true
+  if [ -n "$DATABASE_URL" ]; then
+    echo "🗄️  Subiendo datos finales a PostgreSQL antes de detener..."
+    node operator/pg-sync.mjs backup || echo "⚠️  backup final falló"
+  fi
   echo "✅ All services stopped"
   exit 0
 }
