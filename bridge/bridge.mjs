@@ -275,7 +275,8 @@ httpServer.listen(MAIN_PORT, () => {
   log(`  📡 Clientes:   ${wsClients.length}`);
   log(`  📁 Proyecto:   ${ROOT}\n`);
   startHermes();
-  startOpenCode();
+  // The native `opencode web` process is started by docker-entrypoint.sh.
+  // Do not start the legacy OpenCode Evolved fallback from the bridge.
   setTimeout(startPCAgent, 3000);
 });
 
