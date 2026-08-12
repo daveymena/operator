@@ -42,14 +42,17 @@ BRIDGE_PID=$!
 echo "✅ Bridge started (PID: $BRIDGE_PID)"
 
 # ─── Start OpenCode Web (if available) ──────────────────────────────────────
-if command -v opencode &> /dev/null; then
+if command -v opencode >/dev/null 2>&1; then
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo "🧠 Starting OpenCode Web (port ${OPENCODE_PORT:-21293})"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   
-  opencode web --hostname 0.0.0.0 --port ${OPENCODE_PORT:-21293} &
+  opencode web --hostname 0.0.0.0 --port "${OPENCODE_PORT:-21293}" &
   OPENCODE_PID=$!
   echo "✅ OpenCode Web started (PID: $OPENCODE_PID)"
+else
+  echo "❌ OpenCode CLI no está disponible; no se puede iniciar la interfaz web"
+  exit 1
 fi
 
 # ─── Start Agent Server (if exists) ─────────────────────────────────────────
