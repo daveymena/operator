@@ -31,12 +31,12 @@ fi
 # ─── Create directories ──────────────────────────────────────────────────────
 mkdir -p screenshots logs config operator/memory operator/knowledge
 
-# ─── Start Operator Pro API Server (port 3000) ───────────────────────────────
+# ─── Start Operator Pro API Server (port 21293) ──────────────────────────────
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🌐 Starting Operator Pro API Server (port ${OPERATOR_PORT:-3000})"
+echo "🌐 Starting Operator Pro API Server (port ${OPERATOR_PORT:-21293})"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-node operator.mjs --server --port=${OPERATOR_PORT:-3000} &
+node operator/server/start.mjs --server --port="${OPERATOR_PORT:-21293}" &
 API_PID=$!
 echo "✅ API Server started (PID: $API_PID)"
 
