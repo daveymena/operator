@@ -60,7 +60,10 @@ RUN pip3 install --no-cache-dir -r /app/opencode-core/skills/claro-agent/require
 # CLI de opencode-ai -- sin esto, docker-entrypoint.sh salta silenciosamente el
 # bloque "opencode web --port ${OPENCODE_PORT}" (su `command -v opencode` falla),
 # y el API real de OpenCode que usa ventaspro/operator-opencode.ts nunca queda arriba.
-RUN npm install -g opencode-ai --ignore-scripts 2>/dev/null || true
+# NO usar --ignore-scripts: el binario necesita su propio postinstall para
+# funcionar (sin eso, "opencode --version" existe pero falla en cada corrida
+# con "opencode-ai's postinstall script was not run").
+RUN npm install -g opencode-ai
 
 # Expose ports
 EXPOSE 3000 21291 21294
