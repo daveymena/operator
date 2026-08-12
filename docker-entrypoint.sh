@@ -12,6 +12,11 @@ echo ""
 
 cd /app
 
+# Keep the public services on their dedicated ports. Some EasyPanel runtime
+# settings can inject PORT-like values into child processes.
+export OPERATOR_PORT=3000
+export OPENCODE_PORT=21293
+
 # ─── Load environment ────────────────────────────────────────────────────────
 if [ -f "config/.env" ]; then
   echo "✅ Loading config/.env"
