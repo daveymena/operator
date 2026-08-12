@@ -14,8 +14,11 @@ cd /app
 
 # Keep the public services on their dedicated ports. Some EasyPanel runtime
 # settings can inject PORT-like values into child processes.
-export OPERATOR_PORT=3000
-export OPENCODE_PORT=21293
+# EasyPanel routes this service's primary web domain to the first application
+# port, while the configured labels are reversed. Keep the interactive UI on
+# that primary port and expose the Operator API on the secondary port.
+export OPERATOR_PORT=21293
+export OPENCODE_PORT=3000
 
 # ─── Load environment ────────────────────────────────────────────────────────
 if [ -f "config/.env" ]; then
