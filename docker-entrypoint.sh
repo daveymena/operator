@@ -89,7 +89,10 @@ cleanup() {
   exit 0
 }
 
-trap cleanup SIGINT SIGTERM
+# POSIX sh (busybox/dash) no acepta el prefijo "SIG" en `trap` -- solo INT/TERM.
+# Con "SIGINT SIGTERM" el shell falla con "trap: bad trap" y, por set -e, el
+# script (PID 1) muere ahi mismo justo despues del banner, sin llegar a `wait`.
+trap cleanup INT TERM
 
 # ─── Keep container running ─────────────────────────────────────────────────
 wait
